@@ -18,6 +18,24 @@ def test_catalog_replaces_entries_and_searches(tmp_path):
     assert results[0].season == 1
 
 
+def test_catalog_import_tolerates_duplicate_urls(tmp_path):
+    # Real M3U playlists repeat the same stream URL; the import must not abort.
+    catalog = Catalog(tmp_path / "catalog.sqlite")
+    catalog.replace_entries([
+        MediaEntry(title="Movie A", url="http://example.test/a.ts", kind="movie"),
+        MediaEntry(title="Movie A (dup group)", url="http://example.test/a.ts", kind="movie"),
+        MediaEntry(title="Movie B", url="http://example.test/b.ts", kind="movie"),
+    ])
+
+    results = catalog.search("")
+
+    assert {r.url for r in results} == {
+        "http://example.test/a.ts",
+        "http://example.test/b.ts",
+    }
+    assert len(results) == 2
+
+
 def test_catalog_groups_series_by_season(tmp_path):
     catalog = Catalog(tmp_path / "catalog.sqlite")
     catalog.replace_entries([

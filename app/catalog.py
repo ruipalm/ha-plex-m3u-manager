@@ -37,16 +37,27 @@ class Catalog:
             )
 
     def replace_entries(self, entries: list[MediaEntry]) -> None:
+        # M3U playlists frequently repeat the same stream URL (e.g. an episode
+        # listed in more than one group). The table enforces UNIQUE(url), so we
+        # deduplicate by URL before inserting; without this a handful of repeats
+        # would abort the whole import and leave the catalog empty.
+        seen: set[str] = set()
+        unique_entries: list[MediaEntry] = []
+        for entry in entries:
+            if entry.url in seen:
+                continue
+            seen.add(entry.url)
+            unique_entries.append(entry)
         with self._connect() as conn:
             conn.execute("DELETE FROM entries")
             conn.executemany(
                 """
-                INSERT INTO entries (title, url, kind, group_title, tvg_name, series_title, season, episode)
+                INSERT OR IGNORE INTO entries (title, url, kind, group_title, tvg_name, series_title, season, episode)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (entry.title, entry.url, entry.kind, entry.group_title, entry.tvg_name, entry.series_title, entry.season, entry.episode)
-                    for entry in entries
+                    for entry in unique_entries
                 ],
             )
 

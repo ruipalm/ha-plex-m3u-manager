@@ -21,12 +21,18 @@ def test_addon_directory_contains_required_files():
     assert (ADDON / "app" / "main.py").exists()
 
 
-def test_run_script_does_not_use_s6_with_contenv_wrapper():
-    run_script = (ADDON / "run.sh").read_text()
+def test_addon_uses_s6_service_without_with_contenv_wrapper():
+    service_script = ADDON / "rootfs" / "etc" / "services.d" / "plex-m3u-manager" / "run"
+    assert service_script.exists()
 
-    assert "with-contenv" not in run_script
-    assert "bashio" not in run_script
-    assert "exec uvicorn app.main:app" in run_script
+    service_content = service_script.read_text()
+    dockerfile = (ADDON / "Dockerfile").read_text()
+
+    assert "with-contenv" not in service_content
+    assert "bashio" not in service_content
+    assert "exec uvicorn app.main:app" in service_content
+    assert "COPY rootfs /" in dockerfile
+    assert "CMD" not in dockerfile
 
 
 def test_addon_build_yaml_has_arch_specific_base_images():

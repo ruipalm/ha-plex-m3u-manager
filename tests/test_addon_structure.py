@@ -19,6 +19,24 @@ def test_addon_directory_contains_required_files():
     assert (ADDON / "app" / "main.py").exists()
 
 
+def test_addon_app_copy_stays_in_sync_with_development_app():
+    ignored_dirs = {"__pycache__"}
+    app_files = sorted(
+        p.relative_to(ROOT / "app")
+        for p in (ROOT / "app").rglob("*")
+        if p.is_file() and not any(part in ignored_dirs for part in p.parts)
+    )
+    addon_files = sorted(
+        p.relative_to(ADDON / "app")
+        for p in (ADDON / "app").rglob("*")
+        if p.is_file() and not any(part in ignored_dirs for part in p.parts)
+    )
+
+    assert addon_files == app_files
+    for relative_path in app_files:
+        assert (ADDON / "app" / relative_path).read_bytes() == (ROOT / "app" / relative_path).read_bytes()
+
+
 def test_addon_uses_plain_python_image_without_s6_overlay():
     dockerfile = (ADDON / "Dockerfile").read_text()
 

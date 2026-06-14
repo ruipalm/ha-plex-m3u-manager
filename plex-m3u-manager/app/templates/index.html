@@ -30,5 +30,19 @@
   <p class="muted">Fonte: <span class="chip">{{ masked_url or 'não configurado' }}</span></p>
   <form method="post" action="import-url"><button class="btn" {{ 'disabled' if not masked_url }}>↻ Reimportar lista</button></form>
 </div>
+
+<h2>Atualizar aliases TMDB</h2>
+<div class="tile" style="display:block">
+  <p class="muted">Procura no TMDB nomes traduzidos e originais para permitir pesquisa por ambos.</p>
+  {% if alias_refresh.running %}
+    <p><span class="chip">A atualizar…</span></p>
+  {% elif alias_refresh.checked %}
+    <p class="muted">Último resultado: {{ alias_refresh.checked }} verificados · {{ alias_refresh.updated }} atualizados · {{ alias_refresh.misses }} sem resultado</p>
+  {% endif %}
+  {% if alias_refresh.error %}<p class="status failed">{{ alias_refresh.error }}</p>{% endif %}
+  <form method="post" action="tmdb/aliases">
+    <button class="btn" {{ 'disabled' if not tmdb_enabled or alias_refresh.running }}>Atualizar aliases TMDB</button>
+  </form>
+</div>
 {% endif %}
 {% endblock %}

@@ -30,6 +30,37 @@ TMDB = Tmdb(CONFIG.tmdb_api_key, Path(CONFIG.cache_dir) / "tmdb", CONFIG.tmdb_la
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 _STATUS_LABEL = {"queued": "Em fila", "running": "A descarregar", "completed": "Concluído", "failed": "Falhou", "cancelled": "Cancelado", "skipped": "Já existe"}
+_ALIAS_REFRESH = {"running": False, "checked": 0, "updated": 0, "misses": 0, "error": ""}
+
+
+def _refresh_tmdb_aliases(catalog: Catalog, tmdb: Tmdb | None, limit: int | None = None) -> dict[str, int]:
+    stats = {"checked": 0, "updated": 0, "misses": 0}
+    if tmdb is None:
+        return stats
+    for target in catalog.tmdb_alias_targets(limit=limit):
+        kind = str(target["kind"])
+        title = str(target["title"])
+        year = target["year"] if isinstance(target["year"], int) else None
+        stats["checked"] += 1
+        review = tmdb.lookup(title, year, kind)
+        if not review:
+            stats["misses"] += 1
+            continue
+        aliases = review.search_aliases()
+        catalog.update_search_aliases(kind, title, aliases)
+        stats["updated"] += 1
+    return stats
+
+
+def _run_alias_refresh() -> None:
+    _ALIAS_REFRESH.update({"running": True, "checked": 0, "updated": 0, "misses": 0, "error": ""})
+    try:
+        stats = _refresh_tmdb_aliases(CATALOG, TMDB)
+        _ALIAS_REFRESH.update(stats)
+    except Exception as exc:  # noqa: BLE001 - surface background errors in UI
+        _ALIAS_REFRESH["error"] = str(exc)
+    finally:
+        _ALIAS_REFRESH["running"] = False
 
 
 def _render(request: Request, template: str, **ctx) -> HTMLResponse:
@@ -51,7 +82,8 @@ def index(request: Request):
         request, "index.html", nav="home",
         counts=counts, total=sum(counts.values()),
         categories=CATALOG.categories(), active_jobs=_active_jobs(),
-        masked_url=CONFIG.masked_m3u_url(),
+        masked_url=CONFIG.masked_m3u_url(), tmdb_enabled=bool(TMDB), alias_refresh=_ALIAS_REFRESH,
+        refresh=1 if _ALIAS_REFRESH.get("running") else 0,
     )
 
 
@@ -72,6 +104,16 @@ def import_url():
     entries = filter_excluded(parse_m3u(response.text), CONFIG.exclude_patterns)
     CATALOG.replace_entries(entries)
     return RedirectResponse("browse?type=movie", status_code=303)
+
+
+@app.post("/tmdb/aliases")
+def refresh_tmdb_aliases(background_tasks: BackgroundTasks):
+    if not TMDB:
+        _ALIAS_REFRESH.update({"running": False, "checked": 0, "updated": 0, "misses": 0, "error": "TMDB não está configurado"})
+        return RedirectResponse("", status_code=303)
+    if not _ALIAS_REFRESH.get("running"):
+        background_tasks.add_task(_run_alias_refresh)
+    return RedirectResponse("", status_code=303)
 
 
 # -- browse -----------------------------------------------------------------

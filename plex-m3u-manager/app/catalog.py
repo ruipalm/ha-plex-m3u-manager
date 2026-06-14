@@ -209,6 +209,30 @@ class Catalog:
                 (normalized, kind, title),
             )
 
+    def tmdb_alias_targets(self, limit: int | None = None) -> list[dict[str, object]]:
+        sql_limit = " LIMIT ?" if limit else ""
+        params: list[object] = [limit] if limit else []
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT kind, title, year FROM (
+                    SELECT 'movie' AS kind, title AS title, MAX(year) AS year
+                    FROM entries
+                    WHERE kind = 'movie'
+                    GROUP BY title
+                    UNION ALL
+                    SELECT 'series' AS kind, COALESCE(series_title, title) AS title, MAX(year) AS year
+                    FROM entries
+                    WHERE kind = 'series'
+                    GROUP BY COALESCE(series_title, title)
+                )
+                ORDER BY kind, title COLLATE NOCASE
+                {sql_limit}
+                """,
+                params,
+            ).fetchall()
+        return [{"kind": row["kind"], "title": row["title"], "year": row["year"]} for row in rows]
+
     def series_tree(self) -> dict[str, dict[int, list[MediaEntry]]]:
         tree: dict[str, dict[int, list[MediaEntry]]] = defaultdict(lambda: defaultdict(list))
         for entry in self.search(kind="series", limit=100000):

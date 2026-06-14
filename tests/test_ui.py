@@ -30,6 +30,18 @@ def test_season_download_redirects_back_to_downloads_from_nested_route():
     assert 'RedirectResponse("../downloads", status_code=303)' in text
 
 
+def test_home_has_tmdb_alias_refresh_button():
+    index = (TEMPLATES / "index.html").read_text()
+    assert 'action="tmdb/aliases"' in index
+    assert "Atualizar aliases TMDB" in index
+
+
+def test_tmdb_alias_refresh_redirect_is_relative():
+    text = MAIN.read_text()
+    assert '@app.post("/tmdb/aliases")' in text
+    assert 'RedirectResponse("", status_code=303)' in text
+
+
 def test_movie_card_links_by_id_not_stream_url():
     # The poster/detail links must not leak the opaque stream URL.
     macros = (TEMPLATES / "_macros.html").read_text()

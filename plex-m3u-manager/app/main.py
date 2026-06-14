@@ -11,6 +11,7 @@ from app.config import load_config
 from app.download_queue import DownloadQueue
 from app.m3u import parse_m3u
 from app.storage import delete_within_root, get_space_info, human_bytes, list_media_files
+from app.ui import render_download_button, render_season_download_button
 
 app = FastAPI(title="Home Assistant M3U Plex Manager")
 
@@ -105,8 +106,7 @@ def import_url():
 def catalog(q: str = ""):
     entries = CATALOG.search(q, limit=300)
     items = "".join(
-        f"<li><strong>{entry.title}</strong> <small>{entry.kind}</small> "
-        f"<form method='post' action='/downloads' style='display:inline'><input type='hidden' name='entry_id' value='{entry.id}'><button>Descarregar</button></form></li>"
+        f"<li><strong>{entry.title}</strong> <small>{entry.kind}</small> {render_download_button(entry)}</li>"
         for entry in entries
     )
     return _page("Catálogo", f"<div class='card'><h2>Resultados</h2><form><input name='q' value='{q}' placeholder='Pesquisar'><br><br><button>Pesquisar</button></form><p>{len(entries)} entradas</p><p><a href='/downloads'>Ver downloads</a></p><ul>{items}</ul></div>")
@@ -119,9 +119,9 @@ def series():
     for series_title, seasons in sorted(tree.items()):
         parts.append(f"<h3>{series_title}</h3>")
         for season, episodes in sorted(seasons.items()):
-            parts.append(f"<details><summary>Season {season:02d} — {len(episodes)} episódios</summary><ul>")
+            parts.append(f"<details><summary>Season {season:02d} — {len(episodes)} episódios</summary>{render_season_download_button(series_title, season)}<ul>")
             for episode in episodes:
-                parts.append(f"<li>{episode.title}</li>")
+                parts.append(f"<li>{episode.title} {render_download_button(episode)}</li>")
             parts.append("</ul></details>")
     parts.append("</div>")
     return _page("Séries", "".join(parts))
@@ -146,6 +146,17 @@ def enqueue_download(background_tasks: BackgroundTasks, entry_id: int = Form(...
         raise HTTPException(status_code=404, detail="Entry not found")
     job = DOWNLOADS.enqueue(entry)
     background_tasks.add_task(DOWNLOADS.run_job, job.id)
+    return RedirectResponse("/downloads", status_code=303)
+
+
+@app.post("/downloads/season")
+def enqueue_season_download(background_tasks: BackgroundTasks, series_title: str = Form(...), season: int = Form(...)):
+    entries = CATALOG.season_entries(series_title, season)
+    if not entries:
+        raise HTTPException(status_code=404, detail="Season not found")
+    for entry in entries:
+        job = DOWNLOADS.enqueue(entry)
+        background_tasks.add_task(DOWNLOADS.run_job, job.id)
     return RedirectResponse("/downloads", status_code=303)
 
 

@@ -14,6 +14,8 @@ MVP foundation:
 - Imports the configured M3U URL into SQLite.
 - Provides catalogue search and series-by-season views.
 - Provides a basic download queue.
+- Downloads individual movies/episodes.
+- Downloads complete seasons from the series view.
 - Runs as a Home Assistant add-on with ingress.
 
 ## Secrets

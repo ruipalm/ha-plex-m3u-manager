@@ -75,6 +75,18 @@ class Catalog:
             raise KeyError(entry_id)
         return _entry_from_row(row)
 
+    def season_entries(self, series_title: str, season: int) -> list[MediaEntry]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM entries
+                WHERE kind = 'series' AND series_title = ? AND COALESCE(season, 1) = ?
+                ORDER BY episode, title
+                """,
+                (series_title, season),
+            ).fetchall()
+        return [_entry_from_row(row) for row in rows]
+
     def series_tree(self) -> dict[str, dict[int, list[MediaEntry]]]:
         tree: dict[str, dict[int, list[MediaEntry]]] = defaultdict(lambda: defaultdict(list))
         for entry in self.search(kind="series", limit=10000):

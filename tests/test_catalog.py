@@ -29,3 +29,4 @@ def test_catalog_groups_series_by_season(tmp_path):
 
     assert set(grouped["The Show"].keys()) == {1, 2}
     assert grouped["The Show"][1][0].episode == 1
+    assert [entry.episode for entry in catalog.season_entries("The Show", 2)] == [1]

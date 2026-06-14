@@ -1,5 +1,3 @@
-import asyncio
-
 import httpx
 import pytest
 
@@ -8,9 +6,11 @@ from app.models import MediaEntry
 
 
 class FakeResponse:
-    def __init__(self, chunks):
+    def __init__(self, chunks, status_code=200, headers=None, fail_after=None):
         self.chunks = chunks
-        self.headers = {"content-length": str(sum(len(chunk) for chunk in chunks))}
+        self.status_code = status_code
+        self.headers = headers or {}
+        self.fail_after = fail_after  # raise a connection drop after N chunks
 
     def raise_for_status(self):
         return None
@@ -22,8 +22,10 @@ class FakeResponse:
         return None
 
     async def aiter_bytes(self):
-        for chunk in self.chunks:
+        for i, chunk in enumerate(self.chunks):
             yield chunk
+            if self.fail_after is not None and i + 1 >= self.fail_after:
+                raise httpx.RemoteProtocolError("peer closed connection")
 
 
 class FakeClient:
@@ -36,9 +38,9 @@ class FakeClient:
     async def __aexit__(self, exc_type, exc, tb):
         return None
 
-    def stream(self, method, url):
+    def stream(self, method, url, headers=None):
         assert method == "GET"
-        return FakeResponse([b"abc", b"def"])
+        return FakeResponse([b"abc", b"def"], 200, {"content-length": "6"})
 
 
 @pytest.mark.asyncio
@@ -56,9 +58,77 @@ async def test_download_queue_downloads_movie_and_tracks_progress(tmp_path, monk
 
 
 @pytest.mark.asyncio
+async def test_download_resumes_after_dropped_connection(tmp_path, monkeypatch):
+    full = bytes(range(256)) * 8  # 2048 bytes
+    drop_at = 700
+    state = {"ranges": []}
+
+    class ResumingClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        def stream(self, method, url, headers=None):
+            rng = (headers or {}).get("Range")
+            state["ranges"].append(rng)
+            if rng is None:
+                # First attempt: serve from the start, then drop mid-stream.
+                return FakeResponse([full[:drop_at]], 200, {"content-length": str(len(full))}, fail_after=1)
+            start = int(rng.split("=")[1].split("-")[0])
+            return FakeResponse(
+                [full[start:]], 206,
+                {"content-range": f"bytes {start}-{len(full) - 1}/{len(full)}"},
+            )
+
+    monkeypatch.setattr(httpx, "AsyncClient", ResumingClient)
+    queue = DownloadQueue(tmp_path / "movies", tmp_path / "series")
+    queue.retry_backoff = 0  # no sleeping in tests
+    entry = MediaEntry(title="Big", url="http://example.test/big.ts", kind="movie")
+
+    job = queue.enqueue(entry)
+    await queue.run_job(job.id)
+
+    assert queue.get(job.id).status == "completed"
+    assert (tmp_path / "movies" / "Big.ts").read_bytes() == full
+    assert state["ranges"] == [None, f"bytes={drop_at}-"]  # resumed, not restarted
+
+
+@pytest.mark.asyncio
+async def test_download_fails_after_exhausting_retries(tmp_path, monkeypatch):
+    class AlwaysDropClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        def stream(self, method, url, headers=None):
+            return FakeResponse([b"x"], 200, {"content-length": "100"}, fail_after=1)
+
+    monkeypatch.setattr(httpx, "AsyncClient", AlwaysDropClient)
+    queue = DownloadQueue(tmp_path / "movies", tmp_path / "series", max_retries=3)
+    queue.retry_backoff = 0
+    entry = MediaEntry(title="Flaky", url="http://example.test/f.ts", kind="movie")
+
+    job = queue.enqueue(entry)
+    await queue.run_job(job.id)
+
+    assert queue.get(job.id).status == "failed"
+    # .part is kept so a later re-rent can resume.
+    assert (tmp_path / "movies" / "Flaky.ts.part").exists()
+    assert not (tmp_path / "movies" / "Flaky.ts").exists()
+
+
+@pytest.mark.asyncio
 async def test_download_queue_refuses_entry_without_protocol(tmp_path):
-    # A malformed catalog entry (e.g. parsed from an HTML error page) must not
-    # reach httpx, which raises an opaque "missing protocol" error.
     queue = DownloadQueue(tmp_path / "movies", tmp_path / "series")
     entry = MediaEntry(title="html>", url="html", kind="movie")
 

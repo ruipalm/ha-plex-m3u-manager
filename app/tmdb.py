@@ -106,8 +106,7 @@ class Tmdb:
             response.raise_for_status()
             episodes = response.json().get("episodes") or []
         except Exception:
-            cached.write_text(json.dumps({}))
-            return {}
+            return {}  # don't cache failures — retry on next request
         result: dict[int, EpisodeInfo] = {}
         for ep in episodes:
             ep_num = ep.get("episode_number")
@@ -118,5 +117,6 @@ class Tmdb:
                     air_date=ep.get("air_date") or None,
                     still=(_IMG + ep["still_path"]) if ep.get("still_path") else None,
                 )
-        cached.write_text(json.dumps({str(k): v.__dict__ for k, v in result.items()}))
+        if result:
+            cached.write_text(json.dumps({str(k): v.__dict__ for k, v in result.items()}))
         return result

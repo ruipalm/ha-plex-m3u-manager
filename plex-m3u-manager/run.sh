@@ -1,5 +1,5 @@
-#!/usr/bin/with-contenv bashio
+#!/usr/bin/env bash
 set -euo pipefail
 
-bashio::log.info "Starting HA Plex M3U Manager"
+echo "Starting HA Plex M3U Manager"
 exec uvicorn app.main:app --host 0.0.0.0 --port 8099

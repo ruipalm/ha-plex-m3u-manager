@@ -21,6 +21,14 @@ def test_addon_directory_contains_required_files():
     assert (ADDON / "app" / "main.py").exists()
 
 
+def test_run_script_does_not_use_s6_with_contenv_wrapper():
+    run_script = (ADDON / "run.sh").read_text()
+
+    assert "with-contenv" not in run_script
+    assert "bashio" not in run_script
+    assert "exec uvicorn app.main:app" in run_script
+
+
 def test_addon_build_yaml_has_arch_specific_base_images():
     data = yaml.safe_load((ADDON / "build.yaml").read_text())
 

@@ -29,6 +29,21 @@ def test_addon_build_yaml_has_arch_specific_base_images():
     assert data["build_from"]["armv7"].endswith("armv7-base-python:3.12-alpine3.20")
 
 
+def test_repository_has_no_stale_duplicate_addon_directory():
+    assert not (ROOT / "homeassistant-addon").exists()
+
+
+def test_only_one_addon_config_slug_exists():
+    configs = [p for p in ROOT.glob("*/config.yaml") if p.parent.name != ".github"]
+    slugs = []
+    for config in configs:
+        data = yaml.safe_load(config.read_text()) or {}
+        if "slug" in data:
+            slugs.append((config, data["slug"]))
+
+    assert slugs == [(ADDON / "config.yaml", "plex_m3u_manager")]
+
+
 def test_addon_config_uses_ingress_and_synology_share_defaults():
     data = yaml.safe_load((ADDON / "config.yaml").read_text())
 

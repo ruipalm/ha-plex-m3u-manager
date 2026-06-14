@@ -27,7 +27,7 @@
     </form>
   </summary>
   {% for ep in episodes %}
-  {% set tmdb_ep = tmdb_episodes.get((season, ep.episode)) %}
+  {% set tmdb_ep = tmdb_episodes.get(season, {}).get(ep.episode) %}
   <div class="ep">
     <span class="epnum">E{{ '%02d'|format(ep.episode or 0) }}</span>
     <div class="ep-info">

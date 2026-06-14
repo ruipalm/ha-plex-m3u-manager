@@ -120,11 +120,12 @@ def series_detail(request: Request, name: str):
         raise HTTPException(status_code=404, detail="Series not found")
     first = next(iter(seasons.values()))[0]
     review = TMDB.lookup(name, first.year, "series") if TMDB else None
-    tmdb_episodes: dict[tuple[int, int], object] = {}
+    tmdb_episodes: dict[int, dict[int, object]] = {}
     if TMDB and review and review.series_id:
         for season_num in seasons:
-            for ep_num, info in TMDB.season_episodes(review.series_id, season_num).items():
-                tmdb_episodes[(season_num, ep_num)] = info
+            eps = TMDB.season_episodes(review.series_id, season_num)
+            if eps:
+                tmdb_episodes[season_num] = eps
     return _render(
         request, "series.html", nav="series", name=name, seasons=seasons,
         total_episodes=sum(len(eps) for eps in seasons.values()),

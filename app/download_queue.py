@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno as _errno
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -21,6 +22,17 @@ _RETRYABLE = (
     httpx.PoolTimeout,
     TimeoutError,  # raised by the stall watchdog (asyncio.wait_for)
 )
+
+
+async def _open_with_ebusy_retry(path: Path, mode: str, retries: int = 5) -> object:
+    for attempt in range(retries):
+        try:
+            return path.open(mode)
+        except OSError as exc:
+            if exc.errno != _errno.EBUSY or attempt == retries - 1:
+                raise
+            await asyncio.sleep(2 ** attempt)
+    return path.open(mode)  # unreachable, satisfies type checkers
 
 
 @dataclass
@@ -46,7 +58,11 @@ class DownloadQueue:
         self._jobs: dict[str, DownloadJob] = {}
 
     def enqueue(self, entry: MediaEntry) -> DownloadJob:
-        job = DownloadJob(id=uuid4().hex, entry=entry, destination=destination_for_entry(entry, self.movies_root, self.series_root))
+        dest = destination_for_entry(entry, self.movies_root, self.series_root)
+        for existing in self._jobs.values():
+            if existing.destination == dest and existing.status in ("queued", "running"):
+                return existing
+        job = DownloadJob(id=uuid4().hex, entry=entry, destination=dest)
         self._jobs[job.id] = job
         return job
 
@@ -117,7 +133,8 @@ class DownloadQueue:
                     job.downloaded_bytes = 0
                 job.total_bytes = _total_size(response.headers, resume_from)
                 mode = "ab" if resume_from else "wb"
-                with temp.open(mode) as output:
+                fh = await _open_with_ebusy_retry(temp, mode)
+                with fh:
                     chunks = response.aiter_bytes()
                     while True:
                         # Hard stall watchdog: independent of httpx's own timeout,
@@ -127,7 +144,12 @@ class DownloadQueue:
                         except StopAsyncIteration:
                             break
                         # Write off the event loop so a slow SMB share can't block it.
-                        await asyncio.to_thread(output.write, chunk)
+                        try:
+                            await asyncio.to_thread(fh.write, chunk)
+                        except OSError as exc:
+                            if exc.errno == _errno.EBUSY:
+                                raise httpx.ReadError(f"Resource busy during write: {exc}") from exc
+                            raise
                         job.downloaded_bytes += len(chunk)
 
 

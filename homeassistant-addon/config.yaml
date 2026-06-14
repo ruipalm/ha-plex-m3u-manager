@@ -18,8 +18,8 @@ map:
   - share:rw
 options:
   m3u_url: ""
-  movies_path: "/share/plex/Movies"
-  series_path: "/share/plex/Series"
+  movies_path: "/share/plex_movies"
+  series_path: "/share/plex_series"
 schema:
   m3u_url: str
   movies_path: str

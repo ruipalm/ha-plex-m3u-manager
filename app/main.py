@@ -1,18 +1,22 @@
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from app.catalog import Catalog
+from app.config import load_config
 from app.m3u import parse_m3u
 from app.storage import delete_within_root, get_space_info, human_bytes, list_media_files
 
 app = FastAPI(title="Home Assistant M3U Plex Manager")
 
-MOVIES_PATH = Path(os.getenv("MOVIES_PATH", "/media/Movies"))
-SERIES_PATH = Path(os.getenv("SERIES_PATH", "/media/Series"))
+CONFIG = load_config()
+MOVIES_PATH = Path(CONFIG.movies_path)
+SERIES_PATH = Path(CONFIG.series_path)
+CATALOG = Catalog(CONFIG.database_path)
 
 
 def _page(title: str, body: str) -> HTMLResponse:
@@ -46,18 +50,27 @@ def _page(title: str, body: str) -> HTMLResponse:
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return _page("M3U Plex Manager", """
+    return _page("M3U Plex Manager", f"""
 <div class="card">
   <h2>Importar M3U autorizado</h2>
-  <p>Cole o conteúdo M3U ou configure futuramente o URL nas opções do add-on. Não coloque credenciais no GitHub.</p>
+  <p>URL configurado: <code>{CONFIG.masked_m3u_url() or 'não configurado'}</code></p>
+  <form method="post" action="/import-url">
+    <button type="submit">Importar do URL configurado</button>
+  </form>
+  <hr>
+  <p>Ou cole conteúdo M3U manualmente para teste:</p>
   <form method="post" action="/preview">
     <textarea name="m3u_text" rows="12" placeholder="#EXTM3U..."></textarea><br><br>
     <button type="submit">Pré-visualizar catálogo</button>
   </form>
 </div>
 <div class="card">
-  <h2>Próximos passos</h2>
-  <p>O MVP atual valida parser, espaço e eliminação segura. A seguir entra fila de downloads e agrupamento por temporadas.</p>
+  <h2>Catálogo</h2>
+  <form method="get" action="/catalog">
+    <input name="q" placeholder="Pesquisar filme ou série">
+    <br><br><button type="submit">Pesquisar</button>
+  </form>
+  <p><a href="/series">Ver séries agrupadas por temporada</a></p>
 </div>
 """)
 
@@ -65,14 +78,47 @@ def index():
 @app.post("/preview", response_class=HTMLResponse)
 def preview(m3u_text: str = Form(...)):
     entries = parse_m3u(m3u_text)
+    CATALOG.replace_entries(entries)
     movies = [entry for entry in entries if entry.kind == "movie"][:50]
     series = [entry for entry in entries if entry.kind == "series"][:50]
-    body = [f"<div class='card'><h2>Resumo</h2><p>{len(entries)} entradas importadas. A mostrar até 50 filmes e 50 episódios.</p></div>"]
+    body = [f"<div class='card'><h2>Resumo</h2><p>{len(entries)} entradas importadas e guardadas no catálogo. A mostrar até 50 filmes e 50 episódios.</p></div>"]
     body.append("<div class='grid'>")
     body.append("<section class='card'><h2>Filmes</h2><ul>" + "".join(f"<li>{m.title}</li>" for m in movies) + "</ul></section>")
     body.append("<section class='card'><h2>Séries</h2><ul>" + "".join(f"<li>{s.series_title or s.title} S{s.season or 0:02d}E{s.episode or 0:02d}</li>" for s in series) + "</ul></section>")
     body.append("</div>")
     return _page("Pré-visualização", "".join(body))
+
+
+@app.post("/import-url")
+def import_url():
+    if not CONFIG.m3u_url:
+        raise HTTPException(status_code=400, detail="M3U URL is not configured in add-on options")
+    response = httpx.get(CONFIG.m3u_url, timeout=60)
+    response.raise_for_status()
+    CATALOG.replace_entries(parse_m3u(response.text))
+    return RedirectResponse("/catalog", status_code=303)
+
+
+@app.get("/catalog", response_class=HTMLResponse)
+def catalog(q: str = ""):
+    entries = CATALOG.search(q, limit=300)
+    items = "".join(f"<li><strong>{entry.title}</strong> <small>{entry.kind}</small></li>" for entry in entries)
+    return _page("Catálogo", f"<div class='card'><h2>Resultados</h2><form><input name='q' value='{q}' placeholder='Pesquisar'><br><br><button>Pesquisar</button></form><p>{len(entries)} entradas</p><ul>{items}</ul></div>")
+
+
+@app.get("/series", response_class=HTMLResponse)
+def series():
+    tree = CATALOG.series_tree()
+    parts = ["<div class='card'><h2>Séries</h2>"]
+    for series_title, seasons in sorted(tree.items()):
+        parts.append(f"<h3>{series_title}</h3>")
+        for season, episodes in sorted(seasons.items()):
+            parts.append(f"<details><summary>Season {season:02d} — {len(episodes)} episódios</summary><ul>")
+            for episode in episodes:
+                parts.append(f"<li>{episode.title}</li>")
+            parts.append("</ul></details>")
+    parts.append("</div>")
+    return _page("Séries", "".join(parts))
 
 
 @app.get("/storage", response_class=HTMLResponse)

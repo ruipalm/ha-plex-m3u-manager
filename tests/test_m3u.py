@@ -1,4 +1,11 @@
-from app.m3u import classify_entry, parse_m3u
+from app.m3u import classify_entry, looks_like_m3u, parse_m3u
+
+
+def test_looks_like_m3u_accepts_playlist_and_rejects_html():
+    assert looks_like_m3u("#EXTM3U\n#EXTINF:-1,Foo\nhttp://x/y.ts\n")
+    assert looks_like_m3u("\n  #EXTINF:-1,Foo\nhttp://x/y.ts\n")
+    assert not looks_like_m3u("<html><head><title>XUI.one - Debug Mode</title></head></html>")
+    assert not looks_like_m3u("")
 
 
 def test_parse_movie_entry_from_group_title():

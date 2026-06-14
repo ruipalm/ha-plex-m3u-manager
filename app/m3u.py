@@ -9,6 +9,13 @@ _ATTR_RE = re.compile(r'([\w-]+)="([^"]*)"')
 _EPISODE_RE = re.compile(r"(?P<series>.+?)[ ._\-]+S(?P<season>\d{1,2})E(?P<episode>\d{1,3})\b", re.IGNORECASE)
 
 
+def looks_like_m3u(text: str) -> bool:
+    """Cheap sanity check that a response body is a playlist and not, e.g., an
+    HTML error page returned by a provider that rejected the request."""
+    head = text.lstrip()[:1000].upper()
+    return head.startswith("#EXTM3U") or "#EXTINF" in head
+
+
 def parse_m3u(text: str) -> list[MediaEntry]:
     """Parse a simple extended M3U playlist into media entries."""
     entries: list[MediaEntry] = []

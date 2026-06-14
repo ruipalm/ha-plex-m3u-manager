@@ -7,12 +7,19 @@ from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
+DEFAULT_USER_AGENT = "VLC/3.0.20 LibVLC/3.0.20"
+
+
 @dataclass(frozen=True)
 class AppConfig:
     m3u_url: str = ""
     movies_path: str = "/share/plex_movies"
     series_path: str = "/share/plex_series"
     database_path: str = "/data/catalog.sqlite"
+    # Many IPTV providers (XUI.one and similar) serve an HTML error page to
+    # non-player user agents and only return the real playlist to a media
+    # player. Identify as VLC by default so import and downloads work.
+    user_agent: str = DEFAULT_USER_AGENT
 
     def masked_m3u_url(self) -> str:
         if not self.m3u_url:
@@ -37,4 +44,5 @@ def load_config(options_path: str | Path = "/data/options.json") -> AppConfig:
         movies_path=os.getenv("MOVIES_PATH", options.get("movies_path", "/share/plex_movies")),
         series_path=os.getenv("SERIES_PATH", options.get("series_path", "/share/plex_series")),
         database_path=os.getenv("DATABASE_PATH", options.get("database_path", default_db)),
+        user_agent=os.getenv("USER_AGENT", options.get("user_agent") or DEFAULT_USER_AGENT),
     )

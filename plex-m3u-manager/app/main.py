@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app.catalog import Catalog
 from app.config import load_config
 from app.download_queue import DownloadQueue
-from app.m3u import parse_m3u
+from app.m3u import looks_like_m3u, parse_m3u
 from app.storage import delete_within_root, get_space_info, human_bytes, list_media_files
 from app.ui import render_download_button, render_season_download_button
 
@@ -19,7 +19,7 @@ CONFIG = load_config()
 MOVIES_PATH = Path(CONFIG.movies_path)
 SERIES_PATH = Path(CONFIG.series_path)
 CATALOG = Catalog(CONFIG.database_path)
-DOWNLOADS = DownloadQueue(MOVIES_PATH, SERIES_PATH)
+DOWNLOADS = DownloadQueue(MOVIES_PATH, SERIES_PATH, user_agent=CONFIG.user_agent)
 
 
 def _page(title: str, body: str) -> HTMLResponse:
@@ -96,8 +96,18 @@ def preview(m3u_text: str = Form(...)):
 def import_url():
     if not CONFIG.m3u_url:
         raise HTTPException(status_code=400, detail="M3U URL is not configured in add-on options")
-    response = httpx.get(CONFIG.m3u_url, timeout=60)
+    response = httpx.get(
+        CONFIG.m3u_url,
+        timeout=120,
+        follow_redirects=True,
+        headers={"User-Agent": CONFIG.user_agent},
+    )
     response.raise_for_status()
+    if not looks_like_m3u(response.text):
+        raise HTTPException(
+            status_code=502,
+            detail="The configured URL did not return an M3U playlist (the provider may have rejected the request). Check the URL and that the provider allows this client.",
+        )
     CATALOG.replace_entries(parse_m3u(response.text))
     return RedirectResponse("catalog", status_code=303)
 

@@ -1,5 +1,5 @@
 name: Plex M3U Manager
-version: "0.1.6"
+version: "0.1.7"
 slug: plex_m3u_manager
 description: Manage authorized M3U media downloads into Synology/Plex folders
 url: https://github.com/ruipalm/ha-plex-m3u-manager
@@ -20,7 +20,9 @@ options:
   m3u_url: ""
   movies_path: "/share/plex_movies"
   series_path: "/share/plex_series"
+  user_agent: "VLC/3.0.20 LibVLC/3.0.20"
 schema:
   m3u_url: str
   movies_path: str
   series_path: str
+  user_agent: str?

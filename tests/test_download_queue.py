@@ -56,6 +56,20 @@ async def test_download_queue_downloads_movie_and_tracks_progress(tmp_path, monk
 
 
 @pytest.mark.asyncio
+async def test_download_queue_refuses_entry_without_protocol(tmp_path):
+    # A malformed catalog entry (e.g. parsed from an HTML error page) must not
+    # reach httpx, which raises an opaque "missing protocol" error.
+    queue = DownloadQueue(tmp_path / "movies", tmp_path / "series")
+    entry = MediaEntry(title="html>", url="html", kind="movie")
+
+    job = queue.enqueue(entry)
+    await queue.run_job(job.id)
+
+    assert queue.get(job.id).status == "failed"
+    assert "no downloadable URL" in queue.get(job.id).error
+
+
+@pytest.mark.asyncio
 async def test_download_queue_refuses_duplicate_destination(tmp_path, monkeypatch):
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
     movies = tmp_path / "movies"

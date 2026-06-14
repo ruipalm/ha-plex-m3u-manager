@@ -22,9 +22,10 @@ class DownloadJob:
 
 
 class DownloadQueue:
-    def __init__(self, movies_root: str | Path, series_root: str | Path):
+    def __init__(self, movies_root: str | Path, series_root: str | Path, user_agent: str | None = None):
         self.movies_root = Path(movies_root)
         self.series_root = Path(series_root)
+        self.user_agent = user_agent
         self._jobs: dict[str, DownloadJob] = {}
 
     def enqueue(self, entry: MediaEntry) -> DownloadJob:
@@ -40,6 +41,10 @@ class DownloadQueue:
 
     async def run_job(self, job_id: str) -> None:
         job = self.get(job_id)
+        if not job.entry.url.lower().startswith(("http://", "https://")):
+            job.status = "failed"
+            job.error = f"Entry has no downloadable URL: {job.entry.url!r}"
+            return
         if job.destination.exists():
             job.status = "failed"
             job.error = f"Destination already exists: {job.destination}"
@@ -47,8 +52,9 @@ class DownloadQueue:
         job.status = "running"
         job.destination.parent.mkdir(parents=True, exist_ok=True)
         temp_destination = job.destination.with_suffix(job.destination.suffix + ".part")
+        headers = {"User-Agent": self.user_agent} if self.user_agent else None
         try:
-            async with httpx.AsyncClient(timeout=None, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=None, follow_redirects=True, headers=headers) as client:
                 async with client.stream("GET", job.entry.url) as response:
                     response.raise_for_status()
                     if response.headers.get("content-length"):

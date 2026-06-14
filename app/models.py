@@ -13,6 +13,7 @@ class MediaEntry:
     series_title: str | None = None
     season: int | None = None
     episode: int | None = None
+    id: int | None = None
 
 
 @dataclass(frozen=True)

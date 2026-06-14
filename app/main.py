@@ -3,11 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import httpx
-from fastapi import FastAPI, Form, HTTPException
+from fastapi import BackgroundTasks, FastAPI, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.catalog import Catalog
 from app.config import load_config
+from app.download_queue import DownloadQueue
 from app.m3u import parse_m3u
 from app.storage import delete_within_root, get_space_info, human_bytes, list_media_files
 
@@ -17,6 +18,7 @@ CONFIG = load_config()
 MOVIES_PATH = Path(CONFIG.movies_path)
 SERIES_PATH = Path(CONFIG.series_path)
 CATALOG = Catalog(CONFIG.database_path)
+DOWNLOADS = DownloadQueue(MOVIES_PATH, SERIES_PATH)
 
 
 def _page(title: str, body: str) -> HTMLResponse:
@@ -102,8 +104,12 @@ def import_url():
 @app.get("/catalog", response_class=HTMLResponse)
 def catalog(q: str = ""):
     entries = CATALOG.search(q, limit=300)
-    items = "".join(f"<li><strong>{entry.title}</strong> <small>{entry.kind}</small></li>" for entry in entries)
-    return _page("Catálogo", f"<div class='card'><h2>Resultados</h2><form><input name='q' value='{q}' placeholder='Pesquisar'><br><br><button>Pesquisar</button></form><p>{len(entries)} entradas</p><ul>{items}</ul></div>")
+    items = "".join(
+        f"<li><strong>{entry.title}</strong> <small>{entry.kind}</small> "
+        f"<form method='post' action='/downloads' style='display:inline'><input type='hidden' name='entry_id' value='{entry.id}'><button>Descarregar</button></form></li>"
+        for entry in entries
+    )
+    return _page("Catálogo", f"<div class='card'><h2>Resultados</h2><form><input name='q' value='{q}' placeholder='Pesquisar'><br><br><button>Pesquisar</button></form><p>{len(entries)} entradas</p><p><a href='/downloads'>Ver downloads</a></p><ul>{items}</ul></div>")
 
 
 @app.get("/series", response_class=HTMLResponse)
@@ -119,6 +125,28 @@ def series():
             parts.append("</ul></details>")
     parts.append("</div>")
     return _page("Séries", "".join(parts))
+
+
+@app.get("/downloads", response_class=HTMLResponse)
+def downloads():
+    rows = []
+    for job in DOWNLOADS.all():
+        progress = f"{human_bytes(job.downloaded_bytes)}"
+        if job.total_bytes:
+            progress += f" / {human_bytes(job.total_bytes)}"
+        rows.append(f"<li><strong>{job.entry.title}</strong> — {job.status} — {progress}<br><small>{job.destination}</small><br><span class='danger'>{job.error}</span></li>")
+    return _page("Downloads", "<div class='card'><h2>Downloads</h2><ul>" + "".join(rows) + "</ul></div>")
+
+
+@app.post("/downloads")
+def enqueue_download(background_tasks: BackgroundTasks, entry_id: int = Form(...)):
+    try:
+        entry = CATALOG.get(entry_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    job = DOWNLOADS.enqueue(entry)
+    background_tasks.add_task(DOWNLOADS.run_job, job.id)
+    return RedirectResponse("/downloads", status_code=303)
 
 
 @app.get("/storage", response_class=HTMLResponse)

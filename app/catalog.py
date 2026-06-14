@@ -68,6 +68,13 @@ class Catalog:
             ).fetchall()
         return [_entry_from_row(row) for row in rows]
 
+    def get(self, entry_id: int) -> MediaEntry:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM entries WHERE id = ?", (entry_id,)).fetchone()
+        if row is None:
+            raise KeyError(entry_id)
+        return _entry_from_row(row)
+
     def series_tree(self) -> dict[str, dict[int, list[MediaEntry]]]:
         tree: dict[str, dict[int, list[MediaEntry]]] = defaultdict(lambda: defaultdict(list))
         for entry in self.search(kind="series", limit=10000):
@@ -85,4 +92,5 @@ def _entry_from_row(row: sqlite3.Row) -> MediaEntry:
         series_title=row["series_title"],
         season=row["season"],
         episode=row["episode"],
+        id=row["id"],
     )

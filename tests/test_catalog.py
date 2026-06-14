@@ -13,7 +13,8 @@ def test_catalog_replaces_entries_and_searches(tmp_path):
     results = catalog.search("show")
 
     assert len(results) == 1
-    assert results[0].title == "The Show S01E01"
+    assert results[0].id is not None
+    assert catalog.get(results[0].id).title == "The Show S01E01"
     assert results[0].season == 1
 
 

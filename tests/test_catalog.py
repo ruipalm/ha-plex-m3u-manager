@@ -18,6 +18,28 @@ def test_catalog_replaces_entries_and_searches(tmp_path):
     assert results[0].season == 1
 
 
+def test_catalog_search_matches_tmdb_aliases(tmp_path):
+    catalog = Catalog(tmp_path / "catalog.sqlite")
+    catalog.replace_entries([
+        MediaEntry(
+            title="Nos Meandros da Lei S01E01",
+            url="s1",
+            kind="series",
+            series_title="Nos Meandros da Lei",
+            season=1,
+            episode=1,
+            search_aliases="The Practice",
+        ),
+        MediaEntry(title="Outro", url="m1", kind="movie"),
+    ])
+
+    series = catalog.list_series(query="practice")
+    raw = catalog.search("practice", kind="series")
+
+    assert [s.series_title for s in series] == ["Nos Meandros da Lei"]
+    assert [e.title for e in raw] == ["Nos Meandros da Lei S01E01"]
+
+
 def test_catalog_import_tolerates_duplicate_urls(tmp_path):
     # Real M3U playlists repeat the same stream URL; the import must not abort.
     catalog = Catalog(tmp_path / "catalog.sqlite")

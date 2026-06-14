@@ -25,6 +25,10 @@ class Review:
     year: int | None
     poster: str | None
     series_id: int | None = None
+    original_title: str | None = None
+
+    def search_aliases(self) -> list[str]:
+        return [alias for alias in (self.title, self.original_title) if alias]
 
 
 @dataclass(frozen=True)
@@ -87,6 +91,7 @@ class Tmdb:
             year=int(date[:4]) if date[:4].isdigit() else year,
             poster=(_IMG + top["poster_path"]) if top.get("poster_path") else None,
             series_id=top.get("id") if kind == "series" else None,
+            original_title=top.get("original_title") or top.get("original_name"),
         )
         cached.write_text(json.dumps(review.__dict__))
         return review

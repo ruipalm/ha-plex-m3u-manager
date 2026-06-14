@@ -6,7 +6,7 @@ from pathlib import Path
 
 from app.models import Category, MediaEntry, SeriesSummary
 
-_COLUMNS = ("title", "url", "kind", "group_title", "tvg_name", "series_title", "season", "episode", "logo", "year")
+_COLUMNS = ("title", "url", "kind", "group_title", "tvg_name", "series_title", "season", "episode", "logo", "year", "search_aliases")
 
 
 class Catalog:
@@ -35,13 +35,14 @@ class Catalog:
                     season INTEGER,
                     episode INTEGER,
                     logo TEXT,
-                    year INTEGER
+                    year INTEGER,
+                    search_aliases TEXT
                 )
                 """
             )
             # Migrate older databases that predate the logo/year columns.
             existing = {row["name"] for row in conn.execute("PRAGMA table_info(entries)")}
-            for column, ddl in (("logo", "logo TEXT"), ("year", "year INTEGER")):
+            for column, ddl in (("logo", "logo TEXT"), ("year", "year INTEGER"), ("search_aliases", "search_aliases TEXT")):
                 if column not in existing:
                     conn.execute(f"ALTER TABLE entries ADD COLUMN {ddl}")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_kind ON entries(kind)")
@@ -67,7 +68,7 @@ class Catalog:
                 f"INSERT OR IGNORE INTO entries ({', '.join(_COLUMNS)}) VALUES ({placeholders})",
                 [
                     (entry.title, entry.url, entry.kind, entry.group_title, entry.tvg_name,
-                     entry.series_title, entry.season, entry.episode, entry.logo, entry.year)
+                     entry.series_title, entry.season, entry.episode, entry.logo, entry.year, entry.search_aliases)
                     for entry in unique_entries
                 ],
             )
@@ -193,6 +194,21 @@ class Catalog:
             ).fetchall()
         return [_entry_from_row(row) for row in rows]
 
+    def update_search_aliases(self, kind: str, title: str, aliases: list[str]) -> None:
+        normalized = " | ".join(dict.fromkeys(alias.strip() for alias in aliases if alias and alias.strip()))
+        if not normalized:
+            return
+        title_column = "series_title" if kind == "series" else "title"
+        with self._connect() as conn:
+            conn.execute(
+                f"""
+                UPDATE entries
+                SET search_aliases = ?
+                WHERE kind = ? AND COALESCE({title_column}, title) = ?
+                """,
+                (normalized, kind, title),
+            )
+
     def series_tree(self) -> dict[str, dict[int, list[MediaEntry]]]:
         tree: dict[str, dict[int, list[MediaEntry]]] = defaultdict(lambda: defaultdict(list))
         for entry in self.search(kind="series", limit=100000):
@@ -216,9 +232,10 @@ class Catalog:
             clauses.append(
                 f"(LOWER(COALESCE({title_column}, title)) LIKE ?"
                 " OR LOWER(COALESCE(tvg_name, '')) LIKE ?"
-                " OR LOWER(title) LIKE ?)"
+                " OR LOWER(title) LIKE ?"
+                " OR LOWER(COALESCE(search_aliases, '')) LIKE ?)"
             )
-            params.extend([q, q, q])
+            params.extend([q, q, q, q])
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         return where, params
 
@@ -236,5 +253,6 @@ def _entry_from_row(row: sqlite3.Row) -> MediaEntry:
         episode=row["episode"],
         logo=row["logo"] if "logo" in keys else None,
         year=row["year"] if "year" in keys else None,
+        search_aliases=row["search_aliases"] if "search_aliases" in keys else None,
         id=row["id"],
     )

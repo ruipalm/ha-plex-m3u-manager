@@ -15,6 +15,7 @@ class MediaEntry:
     episode: int | None = None
     logo: str | None = None
     year: int | None = None
+    search_aliases: str | None = None
     id: int | None = None
 
 

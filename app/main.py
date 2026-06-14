@@ -109,6 +109,8 @@ def movie_detail(request: Request, entry_id: int):
     except KeyError:
         raise HTTPException(status_code=404, detail="Movie not found")
     review = TMDB.lookup(movie.title, movie.year, "movie") if TMDB else None
+    if review:
+        CATALOG.update_search_aliases("movie", movie.title, review.search_aliases())
     return _render(request, "movie.html", nav="movies", movie=movie, review=review, tmdb_enabled=bool(TMDB))
 
 
@@ -120,6 +122,8 @@ def series_detail(request: Request, name: str):
         raise HTTPException(status_code=404, detail="Series not found")
     first = next(iter(seasons.values()))[0]
     review = TMDB.lookup(name, first.year, "series") if TMDB else None
+    if review:
+        CATALOG.update_search_aliases("series", name, review.search_aliases())
     tmdb_episodes: dict[int, dict[int, object]] = {}
     if TMDB and review and review.series_id:
         for season_num in seasons:

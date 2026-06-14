@@ -59,8 +59,10 @@ class Tmdb:
             if data is None:
                 return None
             review = Review(**data)
-            # Invalidate stale cache entries that pre-date series_id storage.
-            if kind == "series" and review.series_id is None:
+            # Invalidate stale cache entries that pre-date fields now required
+            # for aliases/search. Otherwise old detail-page cache prevents the
+            # catalog from ever learning the original TMDB title.
+            if "original_title" not in data or (kind == "series" and review.series_id is None):
                 cached.unlink()
             else:
                 return review

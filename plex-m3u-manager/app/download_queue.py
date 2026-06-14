@@ -96,8 +96,9 @@ class DownloadQueue:
         job.destination.parent.mkdir(parents=True, exist_ok=True)
         root = self.series_root if job.entry.kind == "series" else self.movies_root
         staging_dir = root / ".downloads"
-        staging_dir.mkdir(parents=True, exist_ok=True)
-        temp = staging_dir / (job.destination.name + ".part")
+        relative_destination = job.destination.relative_to(root)
+        temp = staging_dir / relative_destination.with_name(relative_destination.name + ".part")
+        temp.parent.mkdir(parents=True, exist_ok=True)
         # Resume across retries: the read timeout aborts a stalled connection so
         # we can reconnect with a Range header and continue where we left off.
         timeout = httpx.Timeout(connect=30.0, read=60.0, write=60.0, pool=None)

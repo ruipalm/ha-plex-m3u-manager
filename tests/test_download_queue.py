@@ -139,6 +139,41 @@ async def test_download_recovers_from_a_stalled_connection(tmp_path, monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_failed_series_download_keeps_partial_in_staging_tree(tmp_path, monkeypatch):
+    class AlwaysDropClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        def stream(self, method, url, headers=None):
+            return FakeResponse([b"x"], 200, {"content-length": "100"}, fail_after=1)
+
+    monkeypatch.setattr(httpx, "AsyncClient", AlwaysDropClient)
+    queue = DownloadQueue(tmp_path / "movies", tmp_path / "series", max_retries=1)
+    queue.retry_backoff = 0
+    entry = MediaEntry(
+        title="Episode 1",
+        url="http://example.test/e1.ts",
+        kind="series",
+        series_title="Example Show",
+        season=1,
+        episode=1,
+    )
+
+    job = queue.enqueue(entry)
+    await queue.run_job(job.id)
+
+    assert queue.get(job.id).status == "failed"
+    assert (tmp_path / "series" / ".downloads" / "Example Show" / "Season 01" / "Episode 1.ts.part").exists()
+    assert not (tmp_path / "series" / "Example Show" / "Season 01" / "Episode 1.ts").exists()
+
+
+@pytest.mark.asyncio
 async def test_download_fails_after_exhausting_retries(tmp_path, monkeypatch):
     class AlwaysDropClient:
         def __init__(self, *a, **k):

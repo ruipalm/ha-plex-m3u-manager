@@ -1,12 +1,10 @@
-ARG BUILD_FROM=ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.20
-FROM ${BUILD_FROM}
+FROM python:3.12-alpine
 
 WORKDIR /app
 COPY app /app/app
-COPY rootfs /
-RUN pip install --no-cache-dir fastapi uvicorn jinja2 python-multipart httpx \
-    && chmod a+x /etc/services.d/plex-m3u-manager/run
+RUN pip install --no-cache-dir fastapi uvicorn jinja2 python-multipart httpx
 
 ENV MOVIES_PATH=/share/plex_movies
 ENV SERIES_PATH=/share/plex_series
 EXPOSE 8099
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8099"]

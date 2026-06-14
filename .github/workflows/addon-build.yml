@@ -15,10 +15,8 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            build_from: ghcr.io/home-assistant/amd64-base-python:3.12-alpine3.20
           - arch: aarch64
             platform: linux/arm64
-            build_from: ghcr.io/home-assistant/aarch64-base-python:3.12-alpine3.20
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
@@ -29,5 +27,3 @@ jobs:
           context: ./plex-m3u-manager
           push: false
           platforms: ${{ matrix.platform }}
-          build-args: |
-            BUILD_FROM=${{ matrix.build_from }}

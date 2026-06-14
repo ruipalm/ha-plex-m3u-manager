@@ -15,32 +15,19 @@ def test_repository_yaml_exists_for_home_assistant_addon_repo():
 
 def test_addon_directory_contains_required_files():
     assert (ADDON / "config.yaml").exists()
-    assert (ADDON / "build.yaml").exists()
     assert (ADDON / "Dockerfile").exists()
-    assert (ADDON / "run.sh").exists()
     assert (ADDON / "app" / "main.py").exists()
 
 
-def test_addon_uses_s6_service_without_with_contenv_wrapper():
-    service_script = ADDON / "rootfs" / "etc" / "services.d" / "plex-m3u-manager" / "run"
-    assert service_script.exists()
-
-    service_content = service_script.read_text()
+def test_addon_uses_plain_python_image_without_s6_overlay():
     dockerfile = (ADDON / "Dockerfile").read_text()
 
-    assert "with-contenv" not in service_content
-    assert "bashio" not in service_content
-    assert "exec uvicorn app.main:app" in service_content
-    assert "COPY rootfs /" in dockerfile
-    assert "CMD" not in dockerfile
-
-
-def test_addon_build_yaml_has_arch_specific_base_images():
-    data = yaml.safe_load((ADDON / "build.yaml").read_text())
-
-    assert data["build_from"]["amd64"].endswith("amd64-base-python:3.12-alpine3.20")
-    assert data["build_from"]["aarch64"].endswith("aarch64-base-python:3.12-alpine3.20")
-    assert data["build_from"]["armv7"].endswith("armv7-base-python:3.12-alpine3.20")
+    assert "FROM python:3.12-alpine" in dockerfile
+    assert "with-contenv" not in dockerfile
+    assert "bashio" not in dockerfile
+    assert "services.d" not in dockerfile
+    assert "CMD" in dockerfile
+    assert "uvicorn" in dockerfile
 
 
 def test_repository_has_no_stale_duplicate_addon_directory():

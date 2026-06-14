@@ -4,7 +4,7 @@ FROM ${BUILD_FROM}
 WORKDIR /app
 COPY app /app/app
 COPY run.sh /run.sh
-RUN pip install --no-cache-dir fastapi 'uvicorn[standard]' jinja2 python-multipart httpx \
+RUN pip install --no-cache-dir fastapi uvicorn jinja2 python-multipart httpx \
     && chmod a+x /run.sh
 
 ENV MOVIES_PATH=/share/plex_movies

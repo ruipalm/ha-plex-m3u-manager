@@ -1,4 +1,24 @@
-from app.m3u import classify_entry, looks_like_m3u, parse_m3u
+from app.m3u import classify_entry, filter_excluded, looks_like_m3u, parse_m3u
+from app.models import MediaEntry
+
+
+def test_filter_excluded_drops_starred_and_adult_groups():
+    entries = [
+        MediaEntry(title="Movie", url="m1", kind="movie", group_title="Netflix"),
+        MediaEntry(title="Ch", url="c1", kind="channel", group_title="★●• BRASIL ●•★"),
+        MediaEntry(title="X", url="x1", kind="movie", group_title="FOR ADULTS"),
+        MediaEntry(title="Keep", url="k1", kind="movie", group_title=None),
+    ]
+    patterns = ["★", "●", "adult"]
+
+    kept = filter_excluded(entries, patterns)
+
+    assert {e.url for e in kept} == {"m1", "k1"}
+
+
+def test_filter_excluded_noop_without_patterns():
+    entries = [MediaEntry(title="A", url="a", kind="movie", group_title="★ x")]
+    assert filter_excluded(entries, []) == entries
 
 
 def test_looks_like_m3u_accepts_playlist_and_rejects_html():

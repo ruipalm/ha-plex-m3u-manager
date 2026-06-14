@@ -13,7 +13,7 @@ from app.catalog import Catalog
 from app.config import load_config
 from app.download_queue import DownloadQueue
 from app.images import ImageCache
-from app.m3u import looks_like_m3u, parse_m3u
+from app.m3u import filter_excluded, looks_like_m3u, parse_m3u
 from app.storage import delete_within_root, get_space_info, human_bytes, list_media_files
 from app.tmdb import Tmdb
 
@@ -69,7 +69,8 @@ def import_url():
             status_code=502,
             detail="The configured URL did not return an M3U playlist (the provider may have rejected the request). Check the URL and that the provider allows this client.",
         )
-    CATALOG.replace_entries(parse_m3u(response.text))
+    entries = filter_excluded(parse_m3u(response.text), CONFIG.exclude_patterns)
+    CATALOG.replace_entries(entries)
     return RedirectResponse("browse?type=movie", status_code=303)
 
 

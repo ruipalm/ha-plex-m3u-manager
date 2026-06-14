@@ -9,6 +9,20 @@ _EPISODE_RE = re.compile(r"(?P<series>.+?)[ ._\-]+S(?P<season>\d{1,2})E(?P<episo
 _YEAR_RE = re.compile(r"\((19|20)\d{2}\)")
 
 
+def filter_excluded(entries: list[MediaEntry], patterns: list[str]) -> list[MediaEntry]:
+    """Drop entries whose group-title contains any of the (lowercased) patterns,
+    e.g. starred live-channel country groups or adult content."""
+    if not patterns:
+        return entries
+    kept = []
+    for entry in entries:
+        group = (entry.group_title or "").lower()
+        if any(pattern in group for pattern in patterns):
+            continue
+        kept.append(entry)
+    return kept
+
+
 def looks_like_m3u(text: str) -> bool:
     """Cheap sanity check that a response body is a playlist and not, e.g., an
     HTML error page returned by a provider that rejected the request."""

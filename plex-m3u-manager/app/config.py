@@ -23,6 +23,14 @@ class AppConfig:
     tmdb_api_key: str = ""
     tmdb_language: str = "pt-PT"
     page_size: int = 60
+    # Comma-separated, case-insensitive substrings. Any entry whose group-title
+    # contains one is dropped on import. Defaults drop the starred country groups
+    # (live channels that can't be rented) and adult content.
+    exclude_groups: str = "★,●,adult,xxx,porn,+18,18+"
+
+    @property
+    def exclude_patterns(self) -> list[str]:
+        return [p.strip().lower() for p in self.exclude_groups.split(",") if p.strip()]
 
     def masked_m3u_url(self) -> str:
         if not self.m3u_url:
@@ -55,4 +63,5 @@ def load_config(options_path: str | Path = "/data/options.json") -> AppConfig:
         tmdb_api_key=os.getenv("TMDB_API_KEY", options.get("tmdb_api_key", "")),
         tmdb_language=os.getenv("TMDB_LANGUAGE", options.get("tmdb_language") or "pt-PT"),
         page_size=int(os.getenv("PAGE_SIZE", options.get("page_size", 60))),
+        exclude_groups=os.getenv("EXCLUDE_GROUPS", options.get("exclude_groups", AppConfig.exclude_groups)),
     )

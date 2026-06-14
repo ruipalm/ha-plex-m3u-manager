@@ -162,8 +162,9 @@ async def test_download_fails_after_exhausting_retries(tmp_path, monkeypatch):
     await queue.run_job(job.id)
 
     assert queue.get(job.id).status == "failed"
-    # .part is kept so a later re-rent can resume.
-    assert (tmp_path / "movies" / "Flaky.ts.part").exists()
+    # .part is kept in the staging directory so a later re-rent can resume
+    # without Plex/SMB trying to index a partial file in the library root.
+    assert (tmp_path / "movies" / ".downloads" / "Flaky.ts.part").exists()
     assert not (tmp_path / "movies" / "Flaky.ts").exists()
 
 

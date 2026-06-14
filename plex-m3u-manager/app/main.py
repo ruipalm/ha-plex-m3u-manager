@@ -120,10 +120,17 @@ def series_detail(request: Request, name: str):
         raise HTTPException(status_code=404, detail="Series not found")
     first = next(iter(seasons.values()))[0]
     review = TMDB.lookup(name, first.year, "series") if TMDB else None
+    tmdb_episodes: dict[int, dict[int, object]] = {}
+    if TMDB and review and review.series_id:
+        for season_num in seasons:
+            eps = TMDB.season_episodes(review.series_id, season_num)
+            if eps:
+                tmdb_episodes[season_num] = eps
     return _render(
         request, "series.html", nav="series", name=name, seasons=seasons,
         total_episodes=sum(len(eps) for eps in seasons.values()),
         group_title=first.group_title, logo=first.logo, review=review,
+        tmdb_episodes=tmdb_episodes,
     )
 
 
@@ -190,6 +197,31 @@ def delete_file(root: str = Form(...), path: str = Form(...)):
         raise HTTPException(status_code=400, detail="Invalid root")
     delete_within_root(target_root, path)
     return RedirectResponse("storage", status_code=303)
+
+
+# -- debug ------------------------------------------------------------------
+
+@app.get("/debug/series/{name}")
+def debug_series(name: str):
+    from urllib.parse import unquote as _unquote
+    name = _unquote(name)
+    seasons = CATALOG.series_detail(name)
+    first_ep = next(iter(seasons.values()), [])[0] if seasons else None
+    review = TMDB.lookup(name, first_ep.year if first_ep else None, "series") if TMDB else None
+    eps_per_season = {}
+    if TMDB and review and review.series_id:
+        for s in seasons:
+            eps = TMDB.season_episodes(review.series_id, s)
+            eps_per_season[s] = {k: v.__dict__ for k, v in eps.items()}
+    from fastapi.responses import JSONResponse
+    return JSONResponse({
+        "series": name,
+        "review_title": review.title if review else None,
+        "series_id": review.series_id if review else None,
+        "seasons_in_catalog": list(seasons.keys()),
+        "tmdb_episodes_count": {s: len(e) for s, e in eps_per_season.items()},
+        "sample": {str(s): {str(k): v["name"] for k, v in list(e.items())[:3]} for s, e in eps_per_season.items()},
+    })
 
 
 # -- image proxy ------------------------------------------------------------

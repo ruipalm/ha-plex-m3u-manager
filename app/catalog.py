@@ -212,8 +212,13 @@ class Catalog:
             clauses.append("group_title = ?")
             params.append(group)
         if query:
-            clauses.append(f"LOWER(COALESCE({title_column}, title)) LIKE ?")
-            params.append(f"%{query.lower()}%")
+            q = f"%{query.lower()}%"
+            clauses.append(
+                f"(LOWER(COALESCE({title_column}, title)) LIKE ?"
+                " OR LOWER(COALESCE(tvg_name, '')) LIKE ?"
+                " OR LOWER(title) LIKE ?)"
+            )
+            params.extend([q, q, q])
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         return where, params
 

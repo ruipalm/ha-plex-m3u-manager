@@ -29,7 +29,7 @@ TMDB = Tmdb(CONFIG.tmdb_api_key, Path(CONFIG.cache_dir) / "tmdb", CONFIG.tmdb_la
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
-_STATUS_LABEL = {"queued": "Em fila", "running": "A descarregar", "completed": "Concluído", "failed": "Falhou", "cancelled": "Cancelado"}
+_STATUS_LABEL = {"queued": "Em fila", "running": "A descarregar", "completed": "Concluído", "failed": "Falhou", "cancelled": "Cancelado", "skipped": "Já existe"}
 
 
 def _render(request: Request, template: str, **ctx) -> HTMLResponse:
@@ -158,7 +158,8 @@ def enqueue_download(background_tasks: BackgroundTasks, entry_id: int = Form(...
     except KeyError:
         raise HTTPException(status_code=404, detail="Entry not found")
     job = DOWNLOADS.enqueue(entry)
-    background_tasks.add_task(DOWNLOADS.run_job, job.id)
+    if job.status == "queued":
+        background_tasks.add_task(DOWNLOADS.run_job, job.id)
     return RedirectResponse("downloads", status_code=303)
 
 
@@ -169,7 +170,8 @@ def enqueue_season_download(background_tasks: BackgroundTasks, series_title: str
         raise HTTPException(status_code=404, detail="Season not found")
     for entry in entries:
         job = DOWNLOADS.enqueue(entry)
-        background_tasks.add_task(DOWNLOADS.run_job, job.id)
+        if job.status == "queued":
+            background_tasks.add_task(DOWNLOADS.run_job, job.id)
     return RedirectResponse("../downloads", status_code=303)
 
 

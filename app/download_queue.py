@@ -71,8 +71,21 @@ class DownloadQueue:
     def enqueue(self, entry: MediaEntry) -> DownloadJob:
         dest = destination_for_entry(entry, self.movies_root, self.series_root)
         for existing in self._jobs.values():
-            if existing.destination == dest and existing.status in ("queued", "running"):
+            if existing.destination == dest and existing.status in ("queued", "running", "completed", "skipped"):
                 return existing
+        if dest.exists():
+            size = dest.stat().st_size
+            job = DownloadJob(
+                id=uuid4().hex,
+                entry=entry,
+                destination=dest,
+                status="skipped",
+                total_bytes=size,
+                downloaded_bytes=size,
+                error="Já existe no destino",
+            )
+            self._jobs[job.id] = job
+            return job
         job = DownloadJob(id=uuid4().hex, entry=entry, destination=dest)
         self._jobs[job.id] = job
         return job
@@ -82,7 +95,7 @@ class DownloadQueue:
 
     def cancel(self, job_id: str) -> bool:
         job = self._jobs.get(job_id)
-        if job is None or job.status in ("completed", "failed", "cancelled"):
+        if job is None or job.status in ("completed", "failed", "cancelled", "skipped"):
             return False
         job.cancel_requested = True
         if job.status == "queued":
@@ -99,6 +112,8 @@ class DownloadQueue:
 
     async def _run_job_inner(self, job_id: str) -> None:
         job = self.get(job_id)
+        if job.status in ("completed", "skipped"):
+            return
         if job.cancel_requested or job.status == "cancelled":
             job.status = "cancelled"
             job.error = ""
@@ -108,8 +123,11 @@ class DownloadQueue:
             job.error = f"Entry has no downloadable URL: {job.entry.url!r}"
             return
         if job.destination.exists():
-            job.status = "failed"
-            job.error = f"Destination already exists: {job.destination}"
+            size = job.destination.stat().st_size
+            job.status = "skipped"
+            job.total_bytes = size
+            job.downloaded_bytes = size
+            job.error = "Já existe no destino"
             return
         job.status = "running"
         job.destination.parent.mkdir(parents=True, exist_ok=True)

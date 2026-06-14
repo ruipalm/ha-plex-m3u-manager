@@ -204,6 +204,36 @@ async def test_download_fails_after_exhausting_retries(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_existing_destination_is_skipped_without_downloading(tmp_path, monkeypatch):
+    class ShouldNotDownloadClient:
+        def __init__(self, *a, **k):
+            raise AssertionError("existing files must not be downloaded again")
+
+    monkeypatch.setattr(httpx, "AsyncClient", ShouldNotDownloadClient)
+    queue = DownloadQueue(tmp_path / "movies", tmp_path / "series")
+    existing = tmp_path / "series" / "The Show" / "Season 01" / "The Show S01E01.ts"
+    existing.parent.mkdir(parents=True)
+    existing.write_bytes(b"already here")
+    entry = MediaEntry(
+        title="The Show S01E01",
+        url="http://example.test/s01e01.ts",
+        kind="series",
+        series_title="The Show",
+        season=1,
+        episode=1,
+    )
+
+    job = queue.enqueue(entry)
+    await queue.run_job(job.id)
+
+    assert job.status == "skipped"
+    assert job.downloaded_bytes == existing.stat().st_size
+    assert job.total_bytes == existing.stat().st_size
+    assert existing.read_bytes() == b"already here"
+    assert not (tmp_path / "series" / ".downloads" / "The Show" / "Season 01" / "The Show S01E01.ts.part").exists()
+
+
+@pytest.mark.asyncio
 async def test_cancelled_queued_download_never_writes_file(tmp_path, monkeypatch):
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
     queue = DownloadQueue(tmp_path / "movies", tmp_path / "series")
@@ -272,16 +302,18 @@ async def test_download_queue_refuses_entry_without_protocol(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_download_queue_refuses_duplicate_destination(tmp_path, monkeypatch):
+async def test_download_queue_skips_duplicate_destination(tmp_path, monkeypatch):
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
     movies = tmp_path / "movies"
     movies.mkdir()
-    (movies / "Movie.ts").write_text("existing")
+    existing = movies / "Movie.ts"
+    existing.write_text("existing")
     queue = DownloadQueue(movies, tmp_path / "series")
     entry = MediaEntry(title="Movie", url="http://example.test/movie.ts", kind="movie")
 
     job = queue.enqueue(entry)
     await queue.run_job(job.id)
 
-    assert queue.get(job.id).status == "failed"
-    assert "already exists" in queue.get(job.id).error
+    assert queue.get(job.id).status == "skipped"
+    assert queue.get(job.id).downloaded_bytes == existing.stat().st_size
+    assert "Já existe" in queue.get(job.id).error

@@ -4,19 +4,28 @@ Home Assistant add-on/web app to manage an authorized M3U catalogue and Plex lib
 
 ## Current status
 
-MVP foundation:
+A "video club" style library you browse like Netflix/Blockbuster and "rent"
+(download) into your Plex folders on Synology:
 
-- Parses M3U `#EXTINF` entries.
-- Classifies movies and series episodes.
-- Reads free/used/total space for configured folders.
-- Lists media files.
-- Deletes files safely only inside configured roots.
-- Imports the configured M3U URL into SQLite.
-- Provides catalogue search and series-by-season views.
-- Provides a basic download queue.
-- Downloads individual movies/episodes.
-- Downloads complete seasons from the series view.
-- Runs as a Home Assistant add-on with ingress.
+- Imports the configured M3U URL into SQLite (sends a VLC user-agent so picky
+  XUI.one providers return the real playlist instead of an HTML error page).
+- Classifies entries into movies, series (grouped by show/season) and live
+  channels (`SxxEyy` → series, EPG `tvg-id` → channel, otherwise movie).
+- Poster-grid browsing with cover art from the playlist `tvg-logo`, served
+  through a caching image proxy (fixes mixed-content and slow third-party hosts).
+- Browse and filter by category/provider (Netflix, HBO, Anime, …), search,
+  sort A–Z or by year, with pagination.
+- Movie and series detail pages, optional TMDB review/synopsis/rating.
+- "Rent" a movie, an episode, or a whole season; background download queue with
+  live progress bars.
+- Free/used/total space per folder; safe delete restricted to configured roots.
+- Runs as a Home Assistant add-on with ingress (relative links via `<base>`).
+
+## Reviews (optional)
+
+Set a free [TMDB](https://www.themoviedb.org/settings/api) API key in the add-on
+options (`tmdb_api_key`) to show synopsis and rating on detail pages. Without a
+key everything else works; only the review block is hidden.
 
 ## Secrets
 

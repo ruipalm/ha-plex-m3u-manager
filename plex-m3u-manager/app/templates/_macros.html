@@ -1,0 +1,36 @@
+{% macro poster(logo, alt) %}
+  {% if logo %}
+    <img loading="lazy" src="img?u={{ logo|urlencode }}" alt="{{ alt }}"
+         onerror="this.style.display='none';this.parentNode.classList.add('noimg')">
+  {% endif %}
+{% endmacro %}
+
+{% macro movie_card(m) %}
+  <div class="card">
+    <a class="poster" href="movie/{{ m.id }}">
+      {{ poster(m.logo, m.title) }}
+      {% if m.year %}<span class="badge">{{ m.year }}</span>{% endif %}
+    </a>
+    <div class="cardbody">
+      <div class="cardtitle">{{ m.title }}</div>
+      {% if m.group_title %}<div class="cardmeta">{{ m.group_title }}</div>{% endif %}
+      <form class="rent" method="post" action="downloads">
+        <input type="hidden" name="entry_id" value="{{ m.id }}">
+        <button class="btn small" type="submit">⬇ Alugar</button>
+      </form>
+    </div>
+  </div>
+{% endmacro %}
+
+{% macro series_card(s) %}
+  <a class="card" href="series/{{ s.series_title|urlencode }}">
+    <div class="poster">
+      {{ poster(s.logo, s.series_title) }}
+      <span class="badge">{{ s.seasons }} temp.</span>
+    </div>
+    <div class="cardbody">
+      <div class="cardtitle">{{ s.series_title }}</div>
+      <div class="cardmeta">{{ s.episodes }} episódios{% if s.group_title %} · {{ s.group_title }}{% endif %}</div>
+    </div>
+  </a>
+{% endmacro %}

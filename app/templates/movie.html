@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block content %}
+<p><a class="muted" href="browse?type=movie">← Filmes</a></p>
+<div class="detail">
+  <div class="poster">{{ ui.poster(review.poster if review and review.poster else movie.logo, movie.title) }}</div>
+  <div>
+    <h1>{{ movie.title }}</h1>
+    <p class="muted">
+      {% if movie.year %}<span class="chip">{{ movie.year }}</span>{% endif %}
+      {% if movie.group_title %}<span class="chip">{{ movie.group_title }}</span>{% endif %}
+      {% if review and review.rating %}<span class="chip">★ {{ review.rating }}{% if review.votes %} ({{ review.votes }}){% endif %}</span>{% endif %}
+    </p>
+    {% if review and review.overview %}
+      <p>{{ review.overview }}</p>
+    {% elif tmdb_enabled %}
+      <p class="muted">Sem sinopse encontrada no TMDB.</p>
+    {% else %}
+      <p class="muted">Configura uma chave TMDB nas opções do add-on para ver sinopse e avaliação.</p>
+    {% endif %}
+    <form class="rent" method="post" action="downloads">
+      <input type="hidden" name="entry_id" value="{{ movie.id }}">
+      <button class="btn" type="submit">⬇ Alugar (descarregar para o Plex)</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

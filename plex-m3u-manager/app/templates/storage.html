@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Espaço e ficheiros</h1>
+<div class="tiles">
+  {% for s in sections %}
+  <div class="tile" style="flex-direction:column; align-items:stretch">
+    <div style="display:flex; justify-content:space-between"><strong>{{ s.label }}</strong><span class="chip">{{ s.free_human }} livre</span></div>
+    <div class="progress" style="margin:.5rem 0"><span style="width: {{ s.used_pct }}%"></span></div>
+    <div class="muted" style="font-size:.8rem">{{ s.used_human }} usado de {{ s.total_human }} · {{ s.files|length }} ficheiros</div>
+  </div>
+  {% endfor %}
+</div>
+
+{% for s in sections %}
+<h2>{{ s.label }}</h2>
+{% if s.files %}
+<div class="joblist">
+  {% for f in s.files %}
+  <div class="job" style="display:flex; justify-content:space-between; align-items:center; gap:1rem">
+    <code style="overflow-wrap:anywhere">{{ f.relative_path }}</code>
+    <span class="muted" style="white-space:nowrap">{{ f.size_human }}</span>
+    <form method="post" action="delete" onsubmit="return confirm('Apagar este ficheiro?')">
+      <input type="hidden" name="root" value="{{ s.label }}">
+      <input type="hidden" name="path" value="{{ f.relative_path }}">
+      <button class="btn small ghost" type="submit">🗑</button>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="muted">Sem ficheiros.</p>
+{% endif %}
+{% endfor %}
+{% endblock %}

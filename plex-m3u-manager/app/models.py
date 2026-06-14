@@ -13,7 +13,26 @@ class MediaEntry:
     series_title: str | None = None
     season: int | None = None
     episode: int | None = None
+    logo: str | None = None
+    year: int | None = None
     id: int | None = None
+
+
+@dataclass(frozen=True)
+class SeriesSummary:
+    """One row per distinct series, for the browse grid."""
+    series_title: str
+    group_title: str | None
+    logo: str | None
+    seasons: int
+    episodes: int
+    year: int | None = None
+
+
+@dataclass(frozen=True)
+class Category:
+    name: str
+    count: int
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>🎬 O teu videoclube</h1>
+
+{% if total == 0 %}
+<div class="tile" style="display:block">
+  <p class="muted">O catálogo está vazio. Importa a tua lista M3U para começar.</p>
+  <p>URL configurado: <span class="chip">{{ masked_url or 'não configurado' }}</span></p>
+  <form method="post" action="import-url"><button class="btn" {{ 'disabled' if not masked_url }}>Importar agora</button></form>
+</div>
+{% else %}
+<div class="tiles">
+  <a class="tile" href="browse?type=movie"><div><div class="muted">Filmes</div><div class="n">{{ counts.get('movie', 0) }}</div></div><span style="font-size:1.6rem">🍿</span></a>
+  <a class="tile" href="browse?type=series"><div><div class="muted">Séries</div><div class="n">{{ counts.get('series', 0) }}</div></div><span style="font-size:1.6rem">📺</span></a>
+  <a class="tile" href="categories"><div><div class="muted">Categorias</div><div class="n">{{ categories|length }}</div></div><span style="font-size:1.6rem">🗂️</span></a>
+  <a class="tile" href="downloads"><div><div class="muted">Alugados</div><div class="n">{{ active_jobs }}</div></div><span style="font-size:1.6rem">⬇️</span></a>
+</div>
+
+<h2>Categorias em destaque</h2>
+<div class="tiles">
+  {% for c in categories[:12] %}
+  <a class="tile" href="browse?type=movie&group={{ c.name|urlencode }}">
+    <div class="cardtitle">{{ c.name }}</div><span class="chip">{{ c.count }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+<h2>Atualizar catálogo</h2>
+<div class="tile" style="display:block">
+  <p class="muted">Fonte: <span class="chip">{{ masked_url or 'não configurado' }}</span></p>
+  <form method="post" action="import-url"><button class="btn" {{ 'disabled' if not masked_url }}>↻ Reimportar lista</button></form>
+</div>
+{% endif %}
+{% endblock %}

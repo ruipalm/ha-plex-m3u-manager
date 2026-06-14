@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Alugados / Downloads</h1>
+{% if not jobs %}
+<p class="muted">Ainda não alugaste nada. Vai aos <a href="browse?type=movie">Filmes</a> ou <a href="browse?type=series">Séries</a> e carrega em “Alugar”.</p>
+{% else %}
+<div class="joblist">
+  {% for j in jobs %}
+  <div class="job">
+    <div style="display:flex; justify-content:space-between; gap:1rem">
+      <strong>{{ j.entry.title }}</strong>
+      <span class="status {{ j.status }}">{{ j.status_label }}</span>
+    </div>
+    {% if j.status == 'running' %}
+      <div class="progress" style="margin:.5rem 0"><span style="width: {{ j.percent }}%"></span></div>
+    {% endif %}
+    <div class="muted" style="font-size:.8rem">
+      {{ j.downloaded_human }}{% if j.total_human %} / {{ j.total_human }}{% endif %}
+      · <code>{{ j.destination }}</code>
+    </div>
+    {% if j.error %}<div class="status failed" style="margin-top:.3rem">{{ j.error }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

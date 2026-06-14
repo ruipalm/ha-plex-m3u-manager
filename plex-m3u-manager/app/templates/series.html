@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block content %}
+<p><a class="muted" href="browse?type=series">← Séries</a></p>
+<div class="detail">
+  <div class="poster">{{ ui.poster(review.poster if review and review.poster else logo, name) }}</div>
+  <div>
+    <h1>{{ name }}</h1>
+    <p class="muted">
+      <span class="chip">{{ seasons|length }} temporadas</span>
+      <span class="chip">{{ total_episodes }} episódios</span>
+      {% if group_title %}<span class="chip">{{ group_title }}</span>{% endif %}
+      {% if review and review.rating %}<span class="chip">★ {{ review.rating }}</span>{% endif %}
+    </p>
+    {% if review and review.overview %}<p>{{ review.overview }}</p>{% endif %}
+  </div>
+</div>
+
+{% for season, episodes in seasons.items() %}
+<details class="season" {{ 'open' if loop.first }}>
+  <summary>
+    Temporada {{ '%02d'|format(season) }} — {{ episodes|length }} episódios
+    <form class="rent" method="post" action="downloads/season" style="display:inline; float:right">
+      <input type="hidden" name="series_title" value="{{ name }}">
+      <input type="hidden" name="season" value="{{ season }}">
+      <button class="btn small" type="submit">⬇ Alugar temporada</button>
+    </form>
+  </summary>
+  {% for ep in episodes %}
+  <div class="ep">
+    <span class="epnum">E{{ '%02d'|format(ep.episode or 0) }}</span>
+    <span class="eptitle">{{ ep.title }}</span>
+    <form class="rent" method="post" action="downloads">
+      <input type="hidden" name="entry_id" value="{{ ep.id }}">
+      <button class="btn small ghost" type="submit">⬇</button>
+    </form>
+  </div>
+  {% endfor %}
+</details>
+{% endfor %}
+{% endblock %}

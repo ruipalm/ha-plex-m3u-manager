@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Categorias</h1>
+<form class="filters" method="get" action="categories">
+  <select name="type" onchange="this.form.submit()">
+    <option value="">Tudo</option>
+    <option value="movie" {{ 'selected' if type=='movie' }}>Filmes</option>
+    <option value="series" {{ 'selected' if type=='series' }}>Séries</option>
+  </select>
+</form>
+<div class="tiles">
+  {% for c in categories %}
+  <a class="tile" href="browse?type={{ type or 'movie' }}&group={{ c.name|urlencode }}">
+    <div class="cardtitle">{{ c.name }}</div><span class="chip">{{ c.count }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

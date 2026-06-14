@@ -8,14 +8,17 @@ def test_looks_like_m3u_accepts_playlist_and_rejects_html():
     assert not looks_like_m3u("")
 
 
-def test_parse_movie_entry_from_group_title():
-    text = """#EXTM3U\n#EXTINF:-1 tvg-id=\"\" tvg-name=\"Inception\" group-title=\"Movies\",Inception\nhttp://example.test/movie.ts\n"""
+def test_parse_movie_entry_with_logo_and_year():
+    text = """#EXTM3U\n#EXTINF:-1 tvg-id=\"\" tvg-name=\"Inception (2010)\" tvg-logo=\"http://img/i.jpg\" group-title=\"Netflix\",Inception (2010)\nhttp://example.test/movie.ts\n"""
 
     entries = parse_m3u(text)
 
     assert len(entries) == 1
-    assert entries[0].title == "Inception"
+    assert entries[0].title == "Inception (2010)"
     assert entries[0].kind == "movie"
+    assert entries[0].year == 2010
+    assert entries[0].logo == "http://img/i.jpg"
+    assert entries[0].group_title == "Netflix"
     assert entries[0].url == "http://example.test/movie.ts"
 
 
@@ -30,11 +33,17 @@ def test_parse_series_episode_from_sxxeyy_name():
     assert entry.episode == 3
 
 
-def test_classify_entry_uses_group_title_for_series_without_episode_pattern():
-    entry = classify_entry({"group-title": "TV Series"}, "Documentary Part 1", "http://example.test/x.ts")
+def test_classify_entry_with_epg_id_is_a_live_channel():
+    entry = classify_entry({"group-title": "PT", "tvg-id": "RTP1.pt"}, "RTP1", "http://example.test/x.ts")
 
-    assert entry.kind == "series"
-    assert entry.title == "Documentary Part 1"
+    assert entry.kind == "channel"
+
+
+def test_classify_non_episode_vod_defaults_to_movie():
+    entry = classify_entry({"group-title": "Netflix"}, "Some Film", "http://example.test/x.ts")
+
+    assert entry.kind == "movie"
+    assert entry.title == "Some Film"
 
 
 def test_parser_uses_fallback_display_name_when_tvg_name_missing():

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block content %}
+<h1>{{ 'Séries' if type=='series' else 'Filmes' }}{% if group %} · {{ group }}{% endif %}</h1>
+
+<form class="filters" method="get" action="browse">
+  <input type="hidden" name="type" value="{{ type }}">
+  <input name="q" placeholder="Procurar título…" value="{{ q }}">
+  <select name="group" onchange="this.form.submit()">
+    <option value="">Todas as categorias</option>
+    {% for c in categories %}
+      <option value="{{ c.name }}" {{ 'selected' if c.name==group }}>{{ c.name }} ({{ c.count }})</option>
+    {% endfor %}
+  </select>
+  <select name="sort" onchange="this.form.submit()">
+    <option value="title" {{ 'selected' if sort=='title' }}>A–Z</option>
+    <option value="year" {{ 'selected' if sort=='year' }}>Ano ↓</option>
+  </select>
+  <button class="btn ghost" type="submit">Filtrar</button>
+</form>
+
+<p class="muted">{{ total }} resultados</p>
+
+{% if items %}
+<div class="grid">
+  {% for it in items %}
+    {{ ui.series_card(it) if type=='series' else ui.movie_card(it) }}
+  {% endfor %}
+</div>
+
+<div class="pager">
+  {% if page > 1 %}<a class="btn ghost" href="browse?type={{ type }}&q={{ q|urlencode }}&group={{ group|urlencode }}&sort={{ sort }}&page={{ page-1 }}">← Anterior</a>{% endif %}
+  <span class="chip">Página {{ page }} / {{ pages }}</span>
+  {% if page < pages %}<a class="btn ghost" href="browse?type={{ type }}&q={{ q|urlencode }}&group={{ group|urlencode }}&sort={{ sort }}&page={{ page+1 }}">Seguinte →</a>{% endif %}
+</div>
+{% else %}
+<p class="muted">Sem resultados. Já importaste a lista?</p>
+{% endif %}
+{% endblock %}

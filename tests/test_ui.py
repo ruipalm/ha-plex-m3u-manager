@@ -1,47 +1,32 @@
 from pathlib import Path
 
-from app.ui import render_download_button, render_season_download_button
-from app.models import MediaEntry
-
 ROOT = Path(__file__).resolve().parents[1]
-ADDON = ROOT / "plex-m3u-manager"
+TEMPLATES = ROOT / "app" / "templates"
+MAIN = ROOT / "app" / "main.py"
 
 
-def test_render_download_button_uses_catalog_id_not_stream_url():
-    entry = MediaEntry(id=42, title="Movie", url="http://secret.example/movie.ts", kind="movie")
-
-    html = render_download_button(entry)
-
-    assert "entry_id" in html
-    assert "42" in html
-    assert "secret.example" not in html
-
-
-def test_render_season_download_button_posts_series_and_season():
-    html = render_season_download_button("The Show", 2)
-
-    assert "series_title" in html
-    assert "The Show" in html
-    assert "season" in html
-    assert "2" in html
+def test_templates_use_relative_paths_for_home_assistant_ingress():
+    # Under ingress the app is served from a sub-path; every internal link must
+    # be relative so the <base href> set from X-Ingress-Path resolves it.
+    forbidden = ['href="/', "href='/", 'action="/', "action='/", 'src="/', "src='/"]
+    for template in TEMPLATES.glob("*.html"):
+        text = template.read_text()
+        for token in forbidden:
+            assert token not in text, f"{template.name} contains absolute path {token!r}"
 
 
-def test_ui_uses_relative_paths_for_home_assistant_ingress():
-    main_py = (ADDON / "app" / "main.py").read_text()
-    ui_py = (ADDON / "app" / "ui.py").read_text()
-    combined = main_py + ui_py
+def test_base_template_sets_ingress_base_href():
+    assert '<base href="{{ base }}/">' in (TEMPLATES / "base.html").read_text()
 
-    forbidden = [
-        'href="/',
-        "href='/",
-        'action="/',
-        "action='/",
-        'RedirectResponse("/',
-        "RedirectResponse('/",
-    ]
-    for token in forbidden:
-        assert token not in combined
 
-    assert 'href="storage"' in main_py
-    assert 'action="catalog"' in main_py
-    assert "action='downloads'" in ui_py
+def test_main_redirects_use_relative_paths():
+    text = MAIN.read_text()
+    assert 'RedirectResponse("/' not in text
+    assert "RedirectResponse('/" not in text
+
+
+def test_movie_card_links_by_id_not_stream_url():
+    # The poster/detail links must not leak the opaque stream URL.
+    macros = (TEMPLATES / "_macros.html").read_text()
+    assert 'href="movie/{{ m.id }}"' in macros
+    assert "m.url" not in macros

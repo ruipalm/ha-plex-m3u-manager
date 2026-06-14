@@ -35,6 +35,10 @@ async def _open_with_ebusy_retry(path: Path, mode: str, retries: int = 5) -> obj
     return path.open(mode)  # unreachable, satisfies type checkers
 
 
+class _CancelledDownload(Exception):
+    pass
+
+
 @dataclass
 class DownloadJob:
     id: str
@@ -44,6 +48,7 @@ class DownloadJob:
     total_bytes: int | None = None
     downloaded_bytes: int = 0
     error: str = ""
+    cancel_requested: bool = False
 
 
 class DownloadQueue:
@@ -75,6 +80,16 @@ class DownloadQueue:
     def get(self, job_id: str) -> DownloadJob:
         return self._jobs[job_id]
 
+    def cancel(self, job_id: str) -> bool:
+        job = self._jobs.get(job_id)
+        if job is None or job.status in ("completed", "failed", "cancelled"):
+            return False
+        job.cancel_requested = True
+        if job.status == "queued":
+            job.status = "cancelled"
+            job.error = ""
+        return True
+
     def all(self) -> list[DownloadJob]:
         return list(self._jobs.values())
 
@@ -84,6 +99,10 @@ class DownloadQueue:
 
     async def _run_job_inner(self, job_id: str) -> None:
         job = self.get(job_id)
+        if job.cancel_requested or job.status == "cancelled":
+            job.status = "cancelled"
+            job.error = ""
+            return
         if not job.entry.url.lower().startswith(("http://", "https://")):
             job.status = "failed"
             job.error = f"Entry has no downloadable URL: {job.entry.url!r}"
@@ -109,6 +128,8 @@ class DownloadQueue:
                 job.downloaded_bytes = resume_from
                 try:
                     await self._stream_once(job, temp, resume_from, timeout)
+                except _CancelledDownload:
+                    raise
                 except _RETRYABLE as exc:
                     if attempt >= self.max_retries:
                         raise
@@ -125,6 +146,9 @@ class DownloadQueue:
                 )
             temp.rename(job.destination)
             job.status = "completed"
+            job.error = ""
+        except _CancelledDownload:
+            job.status = "cancelled"
             job.error = ""
         except Exception as exc:  # noqa: BLE001 - surface any failure in the UI
             job.status = "failed"
@@ -151,12 +175,16 @@ class DownloadQueue:
                 with fh:
                     chunks = response.aiter_bytes()
                     while True:
+                        if job.cancel_requested:
+                            raise _CancelledDownload()
                         # Hard stall watchdog: independent of httpx's own timeout,
                         # so a half-open/stalled connection can't hang the job.
                         try:
                             chunk = await asyncio.wait_for(chunks.__anext__(), timeout=self.stall_timeout)
                         except StopAsyncIteration:
                             break
+                        if job.cancel_requested:
+                            raise _CancelledDownload()
                         # Write off the event loop so a slow SMB share can't block it.
                         try:
                             await asyncio.to_thread(fh.write, chunk)

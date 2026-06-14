@@ -29,7 +29,7 @@ TMDB = Tmdb(CONFIG.tmdb_api_key, Path(CONFIG.cache_dir) / "tmdb", CONFIG.tmdb_la
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
-_STATUS_LABEL = {"queued": "Em fila", "running": "A descarregar", "completed": "Concluído", "failed": "Falhou"}
+_STATUS_LABEL = {"queued": "Em fila", "running": "A descarregar", "completed": "Concluído", "failed": "Falhou", "cancelled": "Cancelado"}
 
 
 def _render(request: Request, template: str, **ctx) -> HTMLResponse:
@@ -142,6 +142,7 @@ def downloads(request: Request):
     for job in reversed(DOWNLOADS.all()):
         percent = int(job.downloaded_bytes / job.total_bytes * 100) if job.total_bytes else 0
         jobs.append({
+            "id": job.id,
             "entry": job.entry, "status": job.status, "status_label": _STATUS_LABEL.get(job.status, job.status),
             "percent": percent, "downloaded_human": human_bytes(job.downloaded_bytes),
             "total_human": human_bytes(job.total_bytes) if job.total_bytes else "",
@@ -169,7 +170,13 @@ def enqueue_season_download(background_tasks: BackgroundTasks, series_title: str
     for entry in entries:
         job = DOWNLOADS.enqueue(entry)
         background_tasks.add_task(DOWNLOADS.run_job, job.id)
-    return RedirectResponse("downloads", status_code=303)
+    return RedirectResponse("../downloads", status_code=303)
+
+
+@app.post("/downloads/cancel")
+def cancel_download(job_id: str = Form(...)):
+    DOWNLOADS.cancel(job_id)
+    return RedirectResponse("../downloads", status_code=303)
 
 
 # -- storage ----------------------------------------------------------------

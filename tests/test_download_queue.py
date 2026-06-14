@@ -204,6 +204,62 @@ async def test_download_fails_after_exhausting_retries(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_cancelled_queued_download_never_writes_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    queue = DownloadQueue(tmp_path / "movies", tmp_path / "series")
+    entry = MediaEntry(title="Queued", url="http://example.test/q.ts", kind="movie")
+
+    job = queue.enqueue(entry)
+    assert queue.cancel(job.id) is True
+    await queue.run_job(job.id)
+
+    assert queue.get(job.id).status == "cancelled"
+    assert not (tmp_path / "movies" / "Queued.ts").exists()
+    assert not (tmp_path / "movies" / ".downloads" / "Queued.ts.part").exists()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_running_download_stops_and_keeps_partial(tmp_path, monkeypatch):
+    gate = asyncio.Event()
+    proceed = asyncio.Event()
+
+    class SlowResponse(FakeResponse):
+        async def aiter_bytes(self):
+            yield b"first"
+            gate.set()
+            await proceed.wait()
+            yield b"second"
+
+    class SlowClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        def stream(self, method, url, headers=None):
+            return SlowResponse([], 200, {"content-length": "11"})
+
+    monkeypatch.setattr(httpx, "AsyncClient", SlowClient)
+    queue = DownloadQueue(tmp_path / "movies", tmp_path / "series")
+    entry = MediaEntry(title="Running", url="http://example.test/r.ts", kind="movie")
+    job = queue.enqueue(entry)
+
+    task = asyncio.create_task(queue.run_job(job.id))
+    await gate.wait()
+    assert queue.cancel(job.id) is True
+    proceed.set()
+    await task
+
+    assert queue.get(job.id).status == "cancelled"
+    assert (tmp_path / "movies" / ".downloads" / "Running.ts.part").read_bytes() == b"first"
+    assert not (tmp_path / "movies" / "Running.ts").exists()
+
+
+@pytest.mark.asyncio
 async def test_download_queue_refuses_entry_without_protocol(tmp_path):
     queue = DownloadQueue(tmp_path / "movies", tmp_path / "series")
     entry = MediaEntry(title="html>", url="html", kind="movie")

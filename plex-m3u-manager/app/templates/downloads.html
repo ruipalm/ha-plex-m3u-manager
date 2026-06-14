@@ -7,9 +7,17 @@
 <div class="joblist">
   {% for j in jobs %}
   <div class="job">
-    <div style="display:flex; justify-content:space-between; gap:1rem">
+    <div style="display:flex; justify-content:space-between; gap:1rem; align-items:start">
       <strong>{{ j.entry.title }}</strong>
-      <span class="status {{ j.status }}">{{ j.status_label }}</span>
+      <div style="display:flex; gap:.5rem; align-items:center">
+        <span class="status {{ j.status }}">{{ j.status_label }}</span>
+        {% if j.status in ['queued', 'running'] %}
+        <form method="post" action="downloads/cancel">
+          <input type="hidden" name="job_id" value="{{ j.id }}">
+          <button class="btn small ghost" type="submit">Cancelar</button>
+        </form>
+        {% endif %}
+      </div>
     </div>
     {% if j.status == 'running' %}
       <div class="progress" style="margin:.5rem 0"><span style="width: {{ j.percent }}%"></span></div>

@@ -25,6 +25,11 @@ def test_main_redirects_use_relative_paths():
     assert "RedirectResponse('/" not in text
 
 
+def test_season_download_redirects_back_to_downloads_from_nested_route():
+    text = MAIN.read_text()
+    assert 'RedirectResponse("../downloads", status_code=303)' in text
+
+
 def test_movie_card_links_by_id_not_stream_url():
     # The poster/detail links must not leak the opaque stream URL.
     macros = (TEMPLATES / "_macros.html").read_text()

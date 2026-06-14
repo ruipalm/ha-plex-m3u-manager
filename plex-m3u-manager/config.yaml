@@ -1,5 +1,5 @@
 name: Plex M3U Manager
-version: "0.2.13"
+version: "0.2.14"
 slug: plex_m3u_manager
 description: Manage authorized M3U media downloads into Synology/Plex folders
 url: https://github.com/ruipalm/ha-plex-m3u-manager

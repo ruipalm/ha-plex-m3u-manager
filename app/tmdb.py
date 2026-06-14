@@ -52,7 +52,14 @@ class Tmdb:
         cached = self._cache_path(cache_key)
         if cached.exists():
             data = json.loads(cached.read_text())
-            return Review(**data) if data else None
+            if data is None:
+                return None
+            review = Review(**data)
+            # Invalidate stale cache entries that pre-date series_id storage.
+            if kind == "series" and review.series_id is None:
+                cached.unlink()
+            else:
+                return review
 
         search = "tv" if kind == "series" else "movie"
         params = {"api_key": self.api_key, "language": self.language, "query": title}

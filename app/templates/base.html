@@ -69,9 +69,12 @@
     .detail .poster { border-radius: 14px; border: 1px solid var(--line); }
     .season { background: var(--card); border: 1px solid var(--line); border-radius: 12px; margin: .6rem 0; }
     .season > summary { cursor: pointer; padding: .8rem 1rem; font-weight: 700; }
-    .ep { display: flex; align-items: center; gap: .6rem; padding: .5rem 1rem; border-top: 1px solid var(--line); }
-    .ep .epnum { color: var(--muted); font-size: .8rem; min-width: 3.2rem; }
-    .ep .eptitle { flex: 1; font-size: .9rem; }
+    .ep { display: flex; align-items: start; gap: .6rem; padding: .5rem 1rem; border-top: 1px solid var(--line); }
+    .ep .epnum { color: var(--muted); font-size: .8rem; min-width: 3.2rem; padding-top: 2px; }
+    .ep-info { flex: 1; font-size: .9rem; }
+    .ep-details > summary { cursor: pointer; list-style: none; }
+    .ep-details > summary::-webkit-details-marker { display: none; }
+    .ep-overview { margin: .35rem 0 .1rem; font-size: .82rem; color: var(--muted); line-height: 1.5; }
 
     .progress { height: 8px; background: var(--bg2); border-radius: 999px; overflow: hidden; }
     .progress > span { display: block; height: 100%; background: var(--accent); }

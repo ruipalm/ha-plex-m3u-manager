@@ -27,9 +27,19 @@
     </form>
   </summary>
   {% for ep in episodes %}
+  {% set tmdb_ep = tmdb_episodes.get((season, ep.episode)) %}
   <div class="ep">
     <span class="epnum">E{{ '%02d'|format(ep.episode or 0) }}</span>
-    <span class="eptitle">{{ ep.title }}</span>
+    <div class="ep-info">
+      {% if tmdb_ep and tmdb_ep.name %}
+      <details class="ep-details">
+        <summary>{{ tmdb_ep.name }}{% if tmdb_ep.air_date %}<span class="muted" style="font-size:.75rem"> · {{ tmdb_ep.air_date }}</span>{% endif %}</summary>
+        {% if tmdb_ep.overview %}<p class="ep-overview">{{ tmdb_ep.overview }}</p>{% endif %}
+      </details>
+      {% else %}
+      {{ ep.title }}
+      {% endif %}
+    </div>
     <form class="rent" method="post" action="downloads">
       <input type="hidden" name="entry_id" value="{{ ep.id }}">
       <button class="btn small ghost" type="submit">⬇</button>

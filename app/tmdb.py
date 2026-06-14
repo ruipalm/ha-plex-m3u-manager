@@ -24,6 +24,15 @@ class Review:
     votes: int | None
     year: int | None
     poster: str | None
+    series_id: int | None = None
+
+
+@dataclass(frozen=True)
+class EpisodeInfo:
+    name: str
+    overview: str
+    air_date: str | None
+    still: str | None
 
 
 class Tmdb:
@@ -70,6 +79,37 @@ class Tmdb:
             votes=top.get("vote_count"),
             year=int(date[:4]) if date[:4].isdigit() else year,
             poster=(_IMG + top["poster_path"]) if top.get("poster_path") else None,
+            series_id=top.get("id") if kind == "series" else None,
         )
         cached.write_text(json.dumps(review.__dict__))
         return review
+
+    def season_episodes(self, series_id: int, season: int) -> dict[int, EpisodeInfo]:
+        cache_key = f"season|{series_id}|{season}|{self.language}"
+        cached = self._cache_path(cache_key)
+        if cached.exists():
+            data = json.loads(cached.read_text())
+            return {int(k): EpisodeInfo(**v) for k, v in data.items()} if data else {}
+        try:
+            response = httpx.get(
+                f"{_BASE}/tv/{series_id}/season/{season}",
+                params={"api_key": self.api_key, "language": self.language},
+                timeout=15,
+            )
+            response.raise_for_status()
+            episodes = response.json().get("episodes") or []
+        except Exception:
+            cached.write_text(json.dumps({}))
+            return {}
+        result: dict[int, EpisodeInfo] = {}
+        for ep in episodes:
+            ep_num = ep.get("episode_number")
+            if ep_num is not None:
+                result[ep_num] = EpisodeInfo(
+                    name=ep.get("name") or "",
+                    overview=ep.get("overview") or "",
+                    air_date=ep.get("air_date") or None,
+                    still=(_IMG + ep["still_path"]) if ep.get("still_path") else None,
+                )
+        cached.write_text(json.dumps({str(k): v.__dict__ for k, v in result.items()}))
+        return result

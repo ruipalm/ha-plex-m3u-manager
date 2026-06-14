@@ -56,6 +56,12 @@ class DownloadQueue:
         self.retry_backoff = 2.0  # seconds; base for exponential backoff (0 in tests)
         self.stall_timeout = 90.0  # abort and resume if no chunk arrives within this
         self._jobs: dict[str, DownloadJob] = {}
+        self._semaphore: asyncio.Semaphore | None = None
+
+    def _get_semaphore(self) -> asyncio.Semaphore:
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(1)
+        return self._semaphore
 
     def enqueue(self, entry: MediaEntry) -> DownloadJob:
         dest = destination_for_entry(entry, self.movies_root, self.series_root)
@@ -73,6 +79,10 @@ class DownloadQueue:
         return list(self._jobs.values())
 
     async def run_job(self, job_id: str) -> None:
+        async with self._get_semaphore():
+            await self._run_job_inner(job_id)
+
+    async def _run_job_inner(self, job_id: str) -> None:
         job = self.get(job_id)
         if not job.entry.url.lower().startswith(("http://", "https://")):
             job.status = "failed"

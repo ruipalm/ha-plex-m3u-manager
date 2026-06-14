@@ -19,6 +19,7 @@ _RETRYABLE = (
     httpx.ConnectError,
     httpx.ConnectTimeout,
     httpx.PoolTimeout,
+    TimeoutError,  # raised by the stall watchdog (asyncio.wait_for)
 )
 
 
@@ -41,6 +42,7 @@ class DownloadQueue:
         self.user_agent = user_agent
         self.max_retries = max_retries
         self.retry_backoff = 2.0  # seconds; base for exponential backoff (0 in tests)
+        self.stall_timeout = 90.0  # abort and resume if no chunk arrives within this
         self._jobs: dict[str, DownloadJob] = {}
 
     def enqueue(self, entry: MediaEntry) -> DownloadJob:
@@ -116,8 +118,16 @@ class DownloadQueue:
                 job.total_bytes = _total_size(response.headers, resume_from)
                 mode = "ab" if resume_from else "wb"
                 with temp.open(mode) as output:
-                    async for chunk in response.aiter_bytes():
-                        output.write(chunk)
+                    chunks = response.aiter_bytes()
+                    while True:
+                        # Hard stall watchdog: independent of httpx's own timeout,
+                        # so a half-open/stalled connection can't hang the job.
+                        try:
+                            chunk = await asyncio.wait_for(chunks.__anext__(), timeout=self.stall_timeout)
+                        except StopAsyncIteration:
+                            break
+                        # Write off the event loop so a slow SMB share can't block it.
+                        await asyncio.to_thread(output.write, chunk)
                         job.downloaded_bytes += len(chunk)
 
 

@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 import pytest
 
@@ -6,11 +8,12 @@ from app.models import MediaEntry
 
 
 class FakeResponse:
-    def __init__(self, chunks, status_code=200, headers=None, fail_after=None):
+    def __init__(self, chunks, status_code=200, headers=None, fail_after=None, hang=False):
         self.chunks = chunks
         self.status_code = status_code
         self.headers = headers or {}
         self.fail_after = fail_after  # raise a connection drop after N chunks
+        self.hang = hang  # never deliver data (simulates a stalled connection)
 
     def raise_for_status(self):
         return None
@@ -22,6 +25,8 @@ class FakeResponse:
         return None
 
     async def aiter_bytes(self):
+        if self.hang:
+            await asyncio.sleep(3600)
         for i, chunk in enumerate(self.chunks):
             yield chunk
             if self.fail_after is not None and i + 1 >= self.fail_after:
@@ -96,6 +101,41 @@ async def test_download_resumes_after_dropped_connection(tmp_path, monkeypatch):
     assert queue.get(job.id).status == "completed"
     assert (tmp_path / "movies" / "Big.ts").read_bytes() == full
     assert state["ranges"] == [None, f"bytes={drop_at}-"]  # resumed, not restarted
+
+
+@pytest.mark.asyncio
+async def test_download_recovers_from_a_stalled_connection(tmp_path, monkeypatch):
+    payload = b"complete-payload"
+    state = {"calls": 0}
+
+    class StallThenOkClient:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        def stream(self, method, url, headers=None):
+            state["calls"] += 1
+            if state["calls"] == 1:
+                return FakeResponse([], 200, {"content-length": str(len(payload))}, hang=True)
+            return FakeResponse([payload], 200, {"content-length": str(len(payload))})
+
+    monkeypatch.setattr(httpx, "AsyncClient", StallThenOkClient)
+    queue = DownloadQueue(tmp_path / "movies", tmp_path / "series")
+    queue.stall_timeout = 0.05  # fire the watchdog fast
+    queue.retry_backoff = 0
+    entry = MediaEntry(title="Stall", url="http://example.test/s.ts", kind="movie")
+
+    job = queue.enqueue(entry)
+    await queue.run_job(job.id)
+
+    assert queue.get(job.id).status == "completed"
+    assert (tmp_path / "movies" / "Stall.ts").read_bytes() == payload
+    assert state["calls"] == 2  # stalled once, then succeeded
 
 
 @pytest.mark.asyncio

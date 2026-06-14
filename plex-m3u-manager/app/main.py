@@ -44,7 +44,7 @@ def _page(title: str, body: str) -> HTMLResponse:
   </style>
 </head>
 <body>
-  <header><strong>{title}</strong> · <a href="/">Início</a> · <a href="/storage">Espaço/Ficheiros</a></header>
+  <header><strong>{title}</strong> · <a href="./">Início</a> · <a href="storage">Espaço/Ficheiros</a></header>
   <main>{body}</main>
 </body>
 </html>
@@ -57,23 +57,23 @@ def index():
 <div class="card">
   <h2>Importar M3U autorizado</h2>
   <p>URL configurado: <code>{CONFIG.masked_m3u_url() or 'não configurado'}</code></p>
-  <form method="post" action="/import-url">
+  <form method="post" action="import-url">
     <button type="submit">Importar do URL configurado</button>
   </form>
   <hr>
   <p>Ou cole conteúdo M3U manualmente para teste:</p>
-  <form method="post" action="/preview">
+  <form method="post" action="preview">
     <textarea name="m3u_text" rows="12" placeholder="#EXTM3U..."></textarea><br><br>
     <button type="submit">Pré-visualizar catálogo</button>
   </form>
 </div>
 <div class="card">
   <h2>Catálogo</h2>
-  <form method="get" action="/catalog">
+  <form method="get" action="catalog">
     <input name="q" placeholder="Pesquisar filme ou série">
     <br><br><button type="submit">Pesquisar</button>
   </form>
-  <p><a href="/series">Ver séries agrupadas por temporada</a></p>
+  <p><a href="series">Ver séries agrupadas por temporada</a></p>
 </div>
 """)
 
@@ -99,7 +99,7 @@ def import_url():
     response = httpx.get(CONFIG.m3u_url, timeout=60)
     response.raise_for_status()
     CATALOG.replace_entries(parse_m3u(response.text))
-    return RedirectResponse("/catalog", status_code=303)
+    return RedirectResponse("catalog", status_code=303)
 
 
 @app.get("/catalog", response_class=HTMLResponse)
@@ -109,7 +109,7 @@ def catalog(q: str = ""):
         f"<li><strong>{entry.title}</strong> <small>{entry.kind}</small> {render_download_button(entry)}</li>"
         for entry in entries
     )
-    return _page("Catálogo", f"<div class='card'><h2>Resultados</h2><form><input name='q' value='{q}' placeholder='Pesquisar'><br><br><button>Pesquisar</button></form><p>{len(entries)} entradas</p><p><a href='/downloads'>Ver downloads</a></p><ul>{items}</ul></div>")
+    return _page("Catálogo", f"<div class='card'><h2>Resultados</h2><form><input name='q' value='{q}' placeholder='Pesquisar'><br><br><button>Pesquisar</button></form><p>{len(entries)} entradas</p><p><a href='downloads'>Ver downloads</a></p><ul>{items}</ul></div>")
 
 
 @app.get("/series", response_class=HTMLResponse)
@@ -146,7 +146,7 @@ def enqueue_download(background_tasks: BackgroundTasks, entry_id: int = Form(...
         raise HTTPException(status_code=404, detail="Entry not found")
     job = DOWNLOADS.enqueue(entry)
     background_tasks.add_task(DOWNLOADS.run_job, job.id)
-    return RedirectResponse("/downloads", status_code=303)
+    return RedirectResponse("downloads", status_code=303)
 
 
 @app.post("/downloads/season")
@@ -157,7 +157,7 @@ def enqueue_season_download(background_tasks: BackgroundTasks, series_title: str
     for entry in entries:
         job = DOWNLOADS.enqueue(entry)
         background_tasks.add_task(DOWNLOADS.run_job, job.id)
-    return RedirectResponse("/downloads", status_code=303)
+    return RedirectResponse("downloads", status_code=303)
 
 
 @app.get("/storage", response_class=HTMLResponse)
@@ -168,7 +168,7 @@ def storage():
         files = list_media_files(root)[:200]
         sections.append(f"<section class='card'><h2>{label}</h2><p>Livre: <strong>{human_bytes(info.free_bytes)}</strong> / Total: {human_bytes(info.total_bytes)}</p><ul>")
         for media_file in files:
-            sections.append(f"<li><code>{media_file.relative_path}</code> — {human_bytes(media_file.size_bytes)} <form method='post' action='/delete' style='display:inline' onsubmit=\"return confirm('Apagar este ficheiro?')\"><input type='hidden' name='root' value='{label}'><input type='hidden' name='path' value='{media_file.relative_path}'><button class='danger'>Apagar</button></form></li>")
+            sections.append(f"<li><code>{media_file.relative_path}</code> — {human_bytes(media_file.size_bytes)} <form method='post' action='delete' style='display:inline' onsubmit=\"return confirm('Apagar este ficheiro?')\"><input type='hidden' name='root' value='{label}'><input type='hidden' name='path' value='{media_file.relative_path}'><button class='danger'>Apagar</button></form></li>")
         sections.append("</ul></section>")
     return _page("Espaço e ficheiros", "<div class='grid'>" + "".join(sections) + "</div>")
 
@@ -179,4 +179,4 @@ def delete_file(root: str = Form(...), path: str = Form(...)):
     if target_root is None:
         raise HTTPException(status_code=400, detail="Invalid root")
     delete_within_root(target_root, path)
-    return RedirectResponse("/storage", status_code=303)
+    return RedirectResponse("storage", status_code=303)

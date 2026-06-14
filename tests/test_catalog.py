@@ -18,6 +18,20 @@ def test_catalog_replaces_entries_and_searches(tmp_path):
     assert results[0].season == 1
 
 
+def test_catalog_inverted_group_filter_excludes_selected_category(tmp_path):
+    catalog = Catalog(tmp_path / "catalog.sqlite")
+    catalog.replace_entries([
+        MediaEntry(title="Movie A", url="a", kind="movie", group_title="Action"),
+        MediaEntry(title="Movie B", url="b", kind="movie", group_title="Drama"),
+        MediaEntry(title="Movie C", url="c", kind="movie", group_title="Action"),
+    ])
+
+    titles = [m.title for m in catalog.list_movies(group="Action", invert_filter=True)]
+
+    assert titles == ["Movie B"]
+    assert catalog.count_movies(group="Action", invert_filter=True) == 1
+
+
 def test_catalog_search_matches_tmdb_aliases(tmp_path):
     catalog = Catalog(tmp_path / "catalog.sqlite")
     catalog.replace_entries([

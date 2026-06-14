@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from math import ceil
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlencode
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
@@ -119,21 +119,33 @@ def refresh_tmdb_aliases(background_tasks: BackgroundTasks):
 # -- browse -----------------------------------------------------------------
 
 @app.get("/browse", response_class=HTMLResponse)
-def browse(request: Request, type: str = "movie", q: str = "", group: str = "", sort: str = "title", page: int = 1):
+def browse(request: Request, type: str = "movie", q: str = "", group: str = "", sort: str = "title", page: int = 1, invert: str = ""):
     type = "series" if type == "series" else "movie"
     group_filter = group or None
+    invert_filter = invert in ("1", "true", "on")
     page = max(page, 1)
     size = CONFIG.page_size
     offset = (page - 1) * size
     if type == "series":
-        total = CATALOG.count_series(q, group_filter)
-        items = CATALOG.list_series(q, group_filter, sort, size, offset)
+        total = CATALOG.count_series(q, group_filter, invert_filter)
+        items = CATALOG.list_series(q, group_filter, sort, size, offset, invert_filter)
     else:
-        total = CATALOG.count_movies(q, group_filter)
-        items = CATALOG.list_movies(q, group_filter, sort, size, offset)
+        total = CATALOG.count_movies(q, group_filter, invert_filter)
+        items = CATALOG.list_movies(q, group_filter, sort, size, offset, invert_filter)
+    pages = max(ceil(total / size), 1)
+    start_page = max(1, page - 2)
+    end_page = min(pages, page + 2)
+    page_numbers = list(range(start_page, end_page + 1))
+
+    def page_url(target_page: int) -> str:
+        params = {"type": type, "q": q, "group": group, "sort": sort, "page": target_page}
+        if invert_filter:
+            params["invert"] = "1"
+        return urlencode(params)
+
     return _render(
-        request, "browse.html", nav=type, type=type, q=q, group=group, sort=sort,
-        items=items, total=total, page=page, pages=max(ceil(total / size), 1),
+        request, "browse.html", nav=type, type=type, q=q, group=group, sort=sort, invert=invert_filter,
+        items=items, total=total, page=page, pages=pages, page_numbers=page_numbers, page_url=page_url,
         categories=CATALOG.categories(type), search_type=type, refresh=0,
     )
 

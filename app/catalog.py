@@ -97,8 +97,8 @@ class Catalog:
     # -- movies -------------------------------------------------------------
 
     def list_movies(self, query: str = "", group: str | None = None, sort: str = "title",
-                    limit: int = 60, offset: int = 0) -> list[MediaEntry]:
-        where, params = self._filter("movie", query, group)
+                    limit: int = 60, offset: int = 0, invert_filter: bool = False) -> list[MediaEntry]:
+        where, params = self._filter("movie", query, group, invert_filter=invert_filter)
         order = {"title": "title COLLATE NOCASE", "year": "year DESC, title COLLATE NOCASE"}.get(sort, "title COLLATE NOCASE")
         with self._connect() as conn:
             rows = conn.execute(
@@ -107,16 +107,16 @@ class Catalog:
             ).fetchall()
         return [_entry_from_row(row) for row in rows]
 
-    def count_movies(self, query: str = "", group: str | None = None) -> int:
-        where, params = self._filter("movie", query, group)
+    def count_movies(self, query: str = "", group: str | None = None, invert_filter: bool = False) -> int:
+        where, params = self._filter("movie", query, group, invert_filter=invert_filter)
         with self._connect() as conn:
             return conn.execute(f"SELECT COUNT(*) FROM entries {where}", params).fetchone()[0]
 
     # -- series -------------------------------------------------------------
 
     def list_series(self, query: str = "", group: str | None = None, sort: str = "title",
-                    limit: int = 60, offset: int = 0) -> list[SeriesSummary]:
-        where, params = self._filter("series", query, group, title_column="series_title")
+                    limit: int = 60, offset: int = 0, invert_filter: bool = False) -> list[SeriesSummary]:
+        where, params = self._filter("series", query, group, title_column="series_title", invert_filter=invert_filter)
         order = {"title": "name COLLATE NOCASE", "year": "year DESC, name COLLATE NOCASE"}.get(sort, "name COLLATE NOCASE")
         with self._connect() as conn:
             rows = conn.execute(
@@ -140,8 +140,8 @@ class Catalog:
             for row in rows
         ]
 
-    def count_series(self, query: str = "", group: str | None = None) -> int:
-        where, params = self._filter("series", query, group, title_column="series_title")
+    def count_series(self, query: str = "", group: str | None = None, invert_filter: bool = False) -> int:
+        where, params = self._filter("series", query, group, title_column="series_title", invert_filter=invert_filter)
         with self._connect() as conn:
             return conn.execute(
                 f"SELECT COUNT(*) FROM (SELECT 1 FROM entries {where} GROUP BY COALESCE(series_title, title))",
@@ -242,14 +242,14 @@ class Catalog:
     # -- internals ----------------------------------------------------------
 
     def _filter(self, kind: str | None, query: str, group: str | None,
-                title_column: str = "title") -> tuple[str, list[object]]:
+                title_column: str = "title", invert_filter: bool = False) -> tuple[str, list[object]]:
         clauses: list[str] = []
         params: list[object] = []
         if kind:
             clauses.append("kind = ?")
             params.append(kind)
         if group:
-            clauses.append("group_title = ?")
+            clauses.append("COALESCE(group_title, '') <> ?" if invert_filter else "group_title = ?")
             params.append(group)
         if query:
             q = f"%{query.lower()}%"

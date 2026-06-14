@@ -30,6 +30,15 @@ def test_season_download_redirects_back_to_downloads_from_nested_route():
     assert 'RedirectResponse("../downloads", status_code=303)' in text
 
 
+def test_browse_template_supports_inverted_filter_and_jump_pagination():
+    browse = (TEMPLATES / "browse.html").read_text()
+    assert 'name="invert"' in browse
+    assert 'Inverter filtro' in browse
+    assert 'href="browse?{{ page_url(1) }}"' in browse
+    assert 'href="browse?{{ page_url(p) }}"' in browse
+    assert 'href="browse?{{ page_url(pages) }}"' in browse
+
+
 def test_home_has_tmdb_alias_refresh_button():
     index = (TEMPLATES / "index.html").read_text()
     assert 'action="tmdb/aliases"' in index

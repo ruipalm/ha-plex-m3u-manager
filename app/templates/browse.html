@@ -16,6 +16,7 @@
     <option value="title" {{ 'selected' if sort=='title' }}>A–Z</option>
     <option value="year" {{ 'selected' if sort=='year' }}>Ano ↓</option>
   </select>
+  <label class="chip"><input type="checkbox" name="invert" value="1" {{ 'checked' if invert }}> Inverter filtro</label>
   <button class="btn ghost" type="submit">Filtrar</button>
 </form>
 
@@ -29,9 +30,31 @@
 </div>
 
 <div class="pager">
-  {% if page > 1 %}<a class="btn ghost" href="browse?type={{ type }}&q={{ q|urlencode }}&group={{ group|urlencode }}&sort={{ sort }}&page={{ page-1 }}">← Anterior</a>{% endif %}
-  <span class="chip">Página {{ page }} / {{ pages }}</span>
-  {% if page < pages %}<a class="btn ghost" href="browse?type={{ type }}&q={{ q|urlencode }}&group={{ group|urlencode }}&sort={{ sort }}&page={{ page+1 }}">Seguinte →</a>{% endif %}
+  {% if page > 1 %}
+    <a class="btn ghost small" href="browse?{{ page_url(1) }}">« Primeira</a>
+    <a class="btn ghost small" href="browse?{{ page_url(page-1) }}">← Anterior</a>
+  {% endif %}
+
+  {% if 1 not in page_numbers %}
+    <a class="btn ghost small" href="browse?{{ page_url(1) }}">1</a>
+    <span class="chip">…</span>
+  {% endif %}
+  {% for p in page_numbers %}
+    {% if p == page %}
+      <span class="chip">Página {{ page }} / {{ pages }}</span>
+    {% else %}
+      <a class="btn ghost small" href="browse?{{ page_url(p) }}">{{ p }}</a>
+    {% endif %}
+  {% endfor %}
+  {% if pages not in page_numbers %}
+    <span class="chip">…</span>
+    <a class="btn ghost small" href="browse?{{ page_url(pages) }}">{{ pages }}</a>
+  {% endif %}
+
+  {% if page < pages %}
+    <a class="btn ghost small" href="browse?{{ page_url(page+1) }}">Seguinte →</a>
+    <a class="btn ghost small" href="browse?{{ page_url(pages) }}">Última »</a>
+  {% endif %}
 </div>
 {% else %}
 <p class="muted">Sem resultados. Já importaste a lista?</p>

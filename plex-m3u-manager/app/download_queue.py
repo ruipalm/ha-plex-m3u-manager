@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import errno as _errno
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
@@ -53,20 +54,161 @@ class DownloadJob:
 
 class DownloadQueue:
     def __init__(self, movies_root: str | Path, series_root: str | Path, user_agent: str | None = None,
-                 max_retries: int = 6):
+                 max_retries: int = 6, history_path: str | Path | None = None):
         self.movies_root = Path(movies_root)
         self.series_root = Path(series_root)
         self.user_agent = user_agent
         self.max_retries = max_retries
         self.retry_backoff = 2.0  # seconds; base for exponential backoff (0 in tests)
         self.stall_timeout = 90.0  # abort and resume if no chunk arrives within this
+        self.history_path = Path(history_path) if history_path else None
         self._jobs: dict[str, DownloadJob] = {}
         self._semaphore: asyncio.Semaphore | None = None
+        if self.history_path:
+            self._init_history()
+            self._load_history()
 
     def _get_semaphore(self) -> asyncio.Semaphore:
         if self._semaphore is None:
             self._semaphore = asyncio.Semaphore(1)
         return self._semaphore
+
+    # -- persistent history -------------------------------------------------
+
+    def _connect_history(self) -> sqlite3.Connection:
+        if self.history_path is None:  # pragma: no cover - guarded by callers
+            raise RuntimeError("Download history is not configured")
+        self.history_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(self.history_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _init_history(self) -> None:
+        with self._connect_history() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS download_jobs (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    url TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    group_title TEXT,
+                    tvg_name TEXT,
+                    series_title TEXT,
+                    season INTEGER,
+                    episode INTEGER,
+                    logo TEXT,
+                    year INTEGER,
+                    search_aliases TEXT,
+                    entry_id INTEGER,
+                    destination TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    total_bytes INTEGER,
+                    downloaded_bytes INTEGER NOT NULL,
+                    error TEXT NOT NULL,
+                    cancel_requested INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+
+    def _load_history(self) -> None:
+        with self._connect_history() as conn:
+            rows = conn.execute("SELECT * FROM download_jobs ORDER BY created_at, rowid").fetchall()
+        for row in rows:
+            status = row["status"]
+            error = row["error"] or ""
+            # A process restart cannot resume an in-memory background task. Keep
+            # it visible in history instead of pretending it is still active.
+            if status in ("queued", "running"):
+                status = "failed"
+                error = error or "Interrompido pelo reinício do add-on"
+            entry = MediaEntry(
+                title=row["title"],
+                url=row["url"],
+                kind=row["kind"],
+                group_title=row["group_title"],
+                tvg_name=row["tvg_name"],
+                series_title=row["series_title"],
+                season=row["season"],
+                episode=row["episode"],
+                logo=row["logo"],
+                year=row["year"],
+                search_aliases=row["search_aliases"],
+                id=row["entry_id"],
+            )
+            job = DownloadJob(
+                id=row["id"],
+                entry=entry,
+                destination=Path(row["destination"]),
+                status=status,
+                total_bytes=row["total_bytes"],
+                downloaded_bytes=row["downloaded_bytes"],
+                error=error,
+                cancel_requested=bool(row["cancel_requested"]),
+            )
+            self._jobs[job.id] = job
+            if status != row["status"] or error != (row["error"] or ""):
+                self._persist_job(job)
+
+    def _persist_job(self, job: DownloadJob) -> None:
+        if self.history_path is None:
+            return
+        with self._connect_history() as conn:
+            conn.execute(
+                """
+                INSERT INTO download_jobs (
+                    id, title, url, kind, group_title, tvg_name, series_title,
+                    season, episode, logo, year, search_aliases, entry_id,
+                    destination, status, total_bytes, downloaded_bytes, error,
+                    cancel_requested, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    title=excluded.title,
+                    url=excluded.url,
+                    kind=excluded.kind,
+                    group_title=excluded.group_title,
+                    tvg_name=excluded.tvg_name,
+                    series_title=excluded.series_title,
+                    season=excluded.season,
+                    episode=excluded.episode,
+                    logo=excluded.logo,
+                    year=excluded.year,
+                    search_aliases=excluded.search_aliases,
+                    entry_id=excluded.entry_id,
+                    destination=excluded.destination,
+                    status=excluded.status,
+                    total_bytes=excluded.total_bytes,
+                    downloaded_bytes=excluded.downloaded_bytes,
+                    error=excluded.error,
+                    cancel_requested=excluded.cancel_requested,
+                    updated_at=CURRENT_TIMESTAMP
+                """,
+                (
+                    job.id,
+                    job.entry.title,
+                    job.entry.url,
+                    job.entry.kind,
+                    job.entry.group_title,
+                    job.entry.tvg_name,
+                    job.entry.series_title,
+                    job.entry.season,
+                    job.entry.episode,
+                    job.entry.logo,
+                    job.entry.year,
+                    job.entry.search_aliases,
+                    job.entry.id,
+                    str(job.destination),
+                    job.status,
+                    job.total_bytes,
+                    job.downloaded_bytes,
+                    job.error,
+                    int(job.cancel_requested),
+                ),
+            )
+
+    # -- queue ---------------------------------------------------------------
 
     def enqueue(self, entry: MediaEntry) -> DownloadJob:
         dest = destination_for_entry(entry, self.movies_root, self.series_root)
@@ -85,9 +227,11 @@ class DownloadQueue:
                 error="Já existe no destino",
             )
             self._jobs[job.id] = job
+            self._persist_job(job)
             return job
         job = DownloadJob(id=uuid4().hex, entry=entry, destination=dest)
         self._jobs[job.id] = job
+        self._persist_job(job)
         return job
 
     def get(self, job_id: str) -> DownloadJob:
@@ -101,6 +245,7 @@ class DownloadQueue:
         if job.status == "queued":
             job.status = "cancelled"
             job.error = ""
+        self._persist_job(job)
         return True
 
     def all(self) -> list[DownloadJob]:
@@ -113,14 +258,17 @@ class DownloadQueue:
     async def _run_job_inner(self, job_id: str) -> None:
         job = self.get(job_id)
         if job.status in ("completed", "skipped"):
+            self._persist_job(job)
             return
         if job.cancel_requested or job.status == "cancelled":
             job.status = "cancelled"
             job.error = ""
+            self._persist_job(job)
             return
         if not job.entry.url.lower().startswith(("http://", "https://")):
             job.status = "failed"
             job.error = f"Entry has no downloadable URL: {job.entry.url!r}"
+            self._persist_job(job)
             return
         if job.destination.exists():
             size = job.destination.stat().st_size
@@ -128,8 +276,10 @@ class DownloadQueue:
             job.total_bytes = size
             job.downloaded_bytes = size
             job.error = "Já existe no destino"
+            self._persist_job(job)
             return
         job.status = "running"
+        self._persist_job(job)
         job.destination.parent.mkdir(parents=True, exist_ok=True)
         root = self.series_root if job.entry.kind == "series" else self.movies_root
         staging_dir = root / ".downloads"
@@ -144,6 +294,7 @@ class DownloadQueue:
             for attempt in range(1, self.max_retries + 1):
                 resume_from = temp.stat().st_size if temp.exists() else 0
                 job.downloaded_bytes = resume_from
+                self._persist_job(job)
                 try:
                     await self._stream_once(job, temp, resume_from, timeout)
                 except _CancelledDownload:
@@ -152,6 +303,7 @@ class DownloadQueue:
                     if attempt >= self.max_retries:
                         raise
                     job.error = f"Retomar ({attempt}/{self.max_retries}): {exc}"
+                    self._persist_job(job)
                     if self.retry_backoff:
                         await asyncio.sleep(min(self.retry_backoff ** attempt, 30))
                     continue
@@ -165,12 +317,15 @@ class DownloadQueue:
             temp.rename(job.destination)
             job.status = "completed"
             job.error = ""
+            self._persist_job(job)
         except _CancelledDownload:
             job.status = "cancelled"
             job.error = ""
+            self._persist_job(job)
         except Exception as exc:  # noqa: BLE001 - surface any failure in the UI
             job.status = "failed"
             job.error = str(exc)
+            self._persist_job(job)
             # Keep the .part file so re-renting can resume from where it stopped.
 
     async def _stream_once(self, job: DownloadJob, temp: Path, resume_from: int, timeout: httpx.Timeout) -> None:
@@ -188,6 +343,7 @@ class DownloadQueue:
                     resume_from = 0
                     job.downloaded_bytes = 0
                 job.total_bytes = _total_size(response.headers, resume_from)
+                self._persist_job(job)
                 mode = "ab" if resume_from else "wb"
                 fh = await _open_with_ebusy_retry(temp, mode)
                 with fh:

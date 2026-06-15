@@ -27,6 +27,18 @@ def test_list_media_files_lists_relative_files(tmp_path):
     assert files[0].size_bytes == 4
 
 
+def test_list_media_files_ignores_synology_recycle_bin(tmp_path):
+    movie = tmp_path / "Movie.mkv"
+    movie.write_text("demo")
+    recycled = tmp_path / "#recycle" / "Deleted.mkv"
+    recycled.parent.mkdir()
+    recycled.write_text("free-space")
+
+    files = list_media_files(tmp_path)
+
+    assert [file.relative_path for file in files] == ["Movie.mkv"]
+
+
 def test_delete_within_root_deletes_child_file(tmp_path):
     target = tmp_path / "old.ts"
     target.write_text("x")

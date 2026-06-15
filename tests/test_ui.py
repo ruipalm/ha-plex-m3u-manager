@@ -37,7 +37,13 @@ def test_browse_template_supports_inverted_filter_and_jump_pagination():
     assert 'href="browse?{{ page_url(1) }}"' in browse
     assert 'href="browse?{{ page_url(p) }}"' in browse
     assert 'href="browse?{{ page_url(pages) }}"' in browse
+    assert browse.count('{{ pager() }}') == 2
 
+
+def test_categories_default_to_movie_categories_so_tiles_match_browse_filter():
+    text = MAIN.read_text()
+    assert 'def categories(request: Request, type: str = "movie")' in text
+    assert 'else "movie"' in text
 
 def test_home_has_tmdb_alias_refresh_button():
     index = (TEMPLATES / "index.html").read_text()

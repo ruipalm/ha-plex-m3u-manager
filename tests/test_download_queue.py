@@ -63,6 +63,40 @@ async def test_download_queue_downloads_movie_and_tracks_progress(tmp_path, monk
 
 
 @pytest.mark.asyncio
+async def test_download_history_survives_queue_restart(tmp_path, monkeypatch):
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    history = tmp_path / "downloads.sqlite"
+    entry = MediaEntry(title="Movie", url="http://example.test/movie.ts", kind="movie", group_title="Netflix")
+    queue = DownloadQueue(tmp_path / "movies", tmp_path / "series", history_path=history)
+
+    job = queue.enqueue(entry)
+    await queue.run_job(job.id)
+    restored = DownloadQueue(tmp_path / "movies", tmp_path / "series", history_path=history)
+
+    restored_job = restored.get(job.id)
+    assert restored_job.status == "completed"
+    assert restored_job.entry.title == "Movie"
+    assert restored_job.entry.group_title == "Netflix"
+    assert restored_job.downloaded_bytes == 6
+
+
+@pytest.mark.asyncio
+async def test_running_download_history_is_not_lost_after_restart(tmp_path):
+    history = tmp_path / "downloads.sqlite"
+    entry = MediaEntry(title="Interrupted", url="http://example.test/i.ts", kind="movie")
+    queue = DownloadQueue(tmp_path / "movies", tmp_path / "series", history_path=history)
+
+    job = queue.enqueue(entry)
+    job.status = "running"
+    queue._persist_job(job)
+    restored = DownloadQueue(tmp_path / "movies", tmp_path / "series", history_path=history)
+
+    restored_job = restored.get(job.id)
+    assert restored_job.status == "failed"
+    assert "reinício" in restored_job.error
+
+
+@pytest.mark.asyncio
 async def test_download_resumes_after_dropped_connection(tmp_path, monkeypatch):
     full = bytes(range(256)) * 8  # 2048 bytes
     drop_at = 700

@@ -1,6 +1,6 @@
 [project]
 name = "ha-plex-m3u-manager"
-version = "0.1.0"
+version = "0.2.20"
 description = "Home Assistant add-on web app to manage authorized M3U media downloads for Plex libraries"
 requires-python = ">=3.12"
 dependencies = [

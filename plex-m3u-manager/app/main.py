@@ -23,7 +23,12 @@ CONFIG = load_config()
 MOVIES_PATH = Path(CONFIG.movies_path)
 SERIES_PATH = Path(CONFIG.series_path)
 CATALOG = Catalog(CONFIG.database_path)
-DOWNLOADS = DownloadQueue(MOVIES_PATH, SERIES_PATH, user_agent=CONFIG.user_agent)
+DOWNLOADS = DownloadQueue(
+    MOVIES_PATH,
+    SERIES_PATH,
+    user_agent=CONFIG.user_agent,
+    history_path=Path(CONFIG.database_path).with_name("downloads.sqlite"),
+)
 IMAGES = ImageCache(Path(CONFIG.cache_dir) / "img", user_agent=CONFIG.user_agent)
 TMDB = Tmdb(CONFIG.tmdb_api_key, Path(CONFIG.cache_dir) / "tmdb", CONFIG.tmdb_language) if CONFIG.tmdb_api_key else None
 
@@ -151,9 +156,9 @@ def browse(request: Request, type: str = "movie", q: str = "", group: str = "", 
 
 
 @app.get("/categories", response_class=HTMLResponse)
-def categories(request: Request, type: str = ""):
-    kind = type if type in ("movie", "series") else None
-    return _render(request, "categories.html", nav="categories", type=type, categories=CATALOG.categories(kind))
+def categories(request: Request, type: str = "movie"):
+    kind = type if type in ("movie", "series") else "movie"
+    return _render(request, "categories.html", nav="categories", type=kind, categories=CATALOG.categories(kind))
 
 
 @app.get("/movie/{entry_id}", response_class=HTMLResponse)

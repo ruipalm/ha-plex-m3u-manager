@@ -1,34 +1,6 @@
 {% extends "base.html" %}
 {% import "_macros.html" as ui %}
-{% block content %}
-<h1>{{ 'Séries' if type=='series' else 'Filmes' }}{% if group %} · {{ group }}{% endif %}</h1>
-
-<form class="filters" method="get" action="browse">
-  <input type="hidden" name="type" value="{{ type }}">
-  <input name="q" placeholder="Procurar título…" value="{{ q }}">
-  <select name="group" onchange="this.form.submit()">
-    <option value="">Todas as categorias</option>
-    {% for c in categories %}
-      <option value="{{ c.name }}" {{ 'selected' if c.name==group }}>{{ c.name }} ({{ c.count }})</option>
-    {% endfor %}
-  </select>
-  <select name="sort" onchange="this.form.submit()">
-    <option value="title" {{ 'selected' if sort=='title' }}>A–Z</option>
-    <option value="year" {{ 'selected' if sort=='year' }}>Ano ↓</option>
-  </select>
-  <label class="chip"><input type="checkbox" name="invert" value="1" {{ 'checked' if invert }}> Inverter filtro</label>
-  <button class="btn ghost" type="submit">Filtrar</button>
-</form>
-
-<p class="muted">{{ total }} resultados</p>
-
-{% if items %}
-<div class="grid">
-  {% for it in items %}
-    {{ ui.series_card(it) if type=='series' else ui.movie_card(it) }}
-  {% endfor %}
-</div>
-
+{% macro pager() %}
 <div class="pager">
   {% if page > 1 %}
     <a class="btn ghost small" href="browse?{{ page_url(1) }}">« Primeira</a>
@@ -56,6 +28,38 @@
     <a class="btn ghost small" href="browse?{{ page_url(pages) }}">Última »</a>
   {% endif %}
 </div>
+{% endmacro %}
+{% block content %}
+<h1>{{ 'Séries' if type=='series' else 'Filmes' }}{% if group %} · {{ group }}{% endif %}</h1>
+
+<form class="filters" method="get" action="browse">
+  <input type="hidden" name="type" value="{{ type }}">
+  <input name="q" placeholder="Procurar título…" value="{{ q }}">
+  <select name="group" onchange="this.form.submit()">
+    <option value="">Todas as categorias</option>
+    {% for c in categories %}
+      <option value="{{ c.name }}" {{ 'selected' if c.name==group }}>{{ c.name }} ({{ c.count }})</option>
+    {% endfor %}
+  </select>
+  <select name="sort" onchange="this.form.submit()">
+    <option value="title" {{ 'selected' if sort=='title' }}>A–Z</option>
+    <option value="year" {{ 'selected' if sort=='year' }}>Ano ↓</option>
+  </select>
+  <label class="chip"><input type="checkbox" name="invert" value="1" {{ 'checked' if invert }}> Inverter filtro</label>
+  <button class="btn ghost" type="submit">Filtrar</button>
+</form>
+
+<p class="muted">{{ total }} resultados</p>
+
+{% if items %}
+{{ pager() }}
+<div class="grid">
+  {% for it in items %}
+    {{ ui.series_card(it) if type=='series' else ui.movie_card(it) }}
+  {% endfor %}
+</div>
+
+{{ pager() }}
 {% else %}
 <p class="muted">Sem resultados. Já importaste a lista?</p>
 {% endif %}

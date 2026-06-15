@@ -88,9 +88,12 @@ def test_catalog_lists_movies_and_series_with_categories(tmp_path):
     assert series[0].series_title == "The Show"
     assert series[0].episodes == 2 and series[0].seasons == 1
 
-    # categories are scoped by kind
+    # categories are scoped by kind; channel/series-only categories must not be
+    # shown as movie categories or their browse links return an empty page.
     movie_cats = {c.name for c in catalog.categories("movie")}
     assert movie_cats == {"Netflix", "Prime"}
+    assert "PT" not in movie_cats
+    assert "HBO" not in movie_cats
 
     by_year = catalog.list_movies(sort="year")
     assert [m.title for m in by_year] == ["Dune (2021)", "Heat (1995)"]

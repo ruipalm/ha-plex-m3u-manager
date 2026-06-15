@@ -30,12 +30,22 @@ def get_space_info(path: str | Path) -> SpaceInfo:
     return SpaceInfo(path=str(root), total_bytes=total, used_bytes=used, free_bytes=free)
 
 
+def _is_recycle_path(path: Path, root: Path) -> bool:
+    try:
+        relative_parts = path.relative_to(root).parts
+    except ValueError:
+        relative_parts = path.parts
+    return any(part.lower() == "#recycle" for part in relative_parts)
+
+
 def list_media_files(root: str | Path) -> list[MediaFile]:
     root_path = Path(root)
     if not root_path.exists():
         return []
     files: list[MediaFile] = []
     for path in root_path.rglob("*"):
+        if _is_recycle_path(path, root_path):
+            continue
         if path.is_file() and path.suffix.lower() in _MEDIA_EXTENSIONS:
             stat = path.stat()
             files.append(MediaFile(str(path.relative_to(root_path)), stat.st_size, stat.st_mtime))

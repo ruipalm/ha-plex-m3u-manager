@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import json
 import hashlib
+import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
+
+_YEAR_IN_TITLE = re.compile(r"\s*\((?:19|20)\d{2}\)\s*")
+
+_log = logging.getLogger(__name__)
 
 # Optional enrichment. The playlist gives us titles and (usually) poster art,
 # but no synopsis or rating. When the user configures a free TMDB API key we
@@ -49,10 +55,25 @@ class Tmdb:
     def _cache_path(self, key: str) -> Path:
         return self.cache_dir / (hashlib.sha256(key.encode("utf-8")).hexdigest() + ".json")
 
+    def _auth(self) -> tuple[dict, dict]:
+        """Return (headers, params) for TMDB auth.
+
+        TMDB issues two types of credentials:
+        - v3 API key (32 hex chars): sent as ?api_key=
+        - v4 Read Access Token (long JWT starting with eyJ): sent as Bearer header.
+          v4 tokens also work against v3 endpoints via Bearer auth.
+        """
+        if len(self.api_key) > 40 or self.api_key.startswith("eyJ"):
+            return {"Authorization": f"Bearer {self.api_key}"}, {}
+        return {}, {"api_key": self.api_key}
+
     def lookup(self, title: str, year: int | None, kind: str) -> Review | None:
         if not self.api_key or not title:
             return None
-        cache_key = f"{kind}|{title}|{year}|{self.language}"
+        search_title = _YEAR_IN_TITLE.sub(" ", title).strip("'\"` \t")
+        if not search_title:
+            return None
+        cache_key = f"{kind}|{search_title}|{year}|{self.language}"
         cached = self._cache_path(cache_key)
         if cached.exists():
             data = json.loads(cached.read_text())
@@ -68,16 +89,18 @@ class Tmdb:
                 return review
 
         search = "tv" if kind == "series" else "movie"
-        params = {"api_key": self.api_key, "language": self.language, "query": title}
+        headers, auth_params = self._auth()
+        params = {**auth_params, "language": self.language, "query": search_title}
         if year and search == "movie":
             params["year"] = year
         elif year:
             params["first_air_date_year"] = year
         try:
-            response = httpx.get(f"{_BASE}/search/{search}", params=params, timeout=15)
+            response = httpx.get(f"{_BASE}/search/{search}", params=params, headers=headers, timeout=15)
             response.raise_for_status()
             results = response.json().get("results") or []
-        except Exception:
+        except Exception as exc:
+            _log.warning("TMDB lookup failed for %r (%s): %s", title, kind, exc)
             return None
 
         if not results:
@@ -104,15 +127,18 @@ class Tmdb:
         if cached.exists():
             data = json.loads(cached.read_text())
             return {int(k): EpisodeInfo(**v) for k, v in data.items()} if data else {}
+        headers, auth_params = self._auth()
         try:
             response = httpx.get(
                 f"{_BASE}/tv/{series_id}/season/{season}",
-                params={"api_key": self.api_key, "language": self.language},
+                params={**auth_params, "language": self.language},
+                headers=headers,
                 timeout=15,
             )
             response.raise_for_status()
             episodes = response.json().get("episodes") or []
-        except Exception:
+        except Exception as exc:
+            _log.warning("TMDB season_episodes failed for series_id=%s season=%s: %s", series_id, season, exc)
             return {}  # don't cache failures — retry on next request
         result: dict[int, EpisodeInfo] = {}
         for ep in episodes:

@@ -161,9 +161,9 @@ def top(request: Request, type: str = "series", group: str = ""):
     group_filter = group or None
 
     if kind == "series":
-        items = CATALOG.list_series(q="", group=group_filter, sort="title", limit=5000, offset=0)
+        items = CATALOG.list_series(query="", group=group_filter, sort="title", limit=5000, offset=0)
     else:
-        items = CATALOG.list_movies(q="", group=group_filter, sort="title", limit=5000, offset=0)
+        items = CATALOG.list_movies(query="", group=group_filter, sort="title", limit=5000, offset=0)
 
     rated: list[dict] = []
     unrated: list[dict] = []

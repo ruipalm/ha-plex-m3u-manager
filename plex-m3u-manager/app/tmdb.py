@@ -10,6 +10,9 @@ from pathlib import Path
 import httpx
 
 _YEAR_IN_TITLE = re.compile(r"\s*\((?:19|20)\d{2}\)\s*")
+# TMDB returns "Episódio N" / "Episode N" / "Folge N" when there is no
+# localised episode title. Single-word + number patterns are all generic.
+_GENERIC_EP_NAME = re.compile(r"^\w+\.?\s+\d+$")
 
 _log = logging.getLogger(__name__)
 
@@ -121,25 +124,20 @@ class Tmdb:
         cached.write_text(json.dumps(review.__dict__))
         return review
 
-    def season_episodes(self, series_id: int, season: int) -> dict[int, EpisodeInfo]:
-        cache_key = f"season|{series_id}|{season}|{self.language}"
-        cached = self._cache_path(cache_key)
-        if cached.exists():
-            data = json.loads(cached.read_text())
-            return {int(k): EpisodeInfo(**v) for k, v in data.items()} if data else {}
+    def _fetch_season_raw(self, series_id: int, season: int, language: str) -> dict[int, EpisodeInfo]:
         headers, auth_params = self._auth()
         try:
             response = httpx.get(
                 f"{_BASE}/tv/{series_id}/season/{season}",
-                params={**auth_params, "language": self.language},
+                params={**auth_params, "language": language},
                 headers=headers,
                 timeout=15,
             )
             response.raise_for_status()
             episodes = response.json().get("episodes") or []
         except Exception as exc:
-            _log.warning("TMDB season_episodes failed for series_id=%s season=%s: %s", series_id, season, exc)
-            return {}  # don't cache failures — retry on next request
+            _log.warning("TMDB season_episodes failed for series_id=%s season=%s lang=%s: %s", series_id, season, language, exc)
+            return {}
         result: dict[int, EpisodeInfo] = {}
         for ep in episodes:
             ep_num = ep.get("episode_number")
@@ -150,6 +148,37 @@ class Tmdb:
                     air_date=ep.get("air_date") or None,
                     still=(_IMG + ep["still_path"]) if ep.get("still_path") else None,
                 )
-        if result:
-            cached.write_text(json.dumps({str(k): v.__dict__ for k, v in result.items()}))
+        return result
+
+    def season_episodes(self, series_id: int, season: int) -> dict[int, EpisodeInfo]:
+        # Cache key includes "en-fb" to invalidate old entries that had no EN fallback.
+        cache_key = f"season|{series_id}|{season}|{self.language}|en-fb"
+        cached = self._cache_path(cache_key)
+        if cached.exists():
+            data = json.loads(cached.read_text())
+            return {int(k): EpisodeInfo(**v) for k, v in data.items()} if data else {}
+
+        result = self._fetch_season_raw(series_id, season, self.language)
+        if not result:
+            return {}
+
+        # When the primary language returns generic names ("Episódio N", "Episode N",
+        # etc.), fall back to English for name and overview.
+        if self.language != "en-US":
+            needs_en = [
+                num for num, ep in result.items()
+                if not ep.name or _GENERIC_EP_NAME.match(ep.name.strip())
+            ]
+            if needs_en:
+                en = self._fetch_season_raw(series_id, season, "en-US")
+                for num in needs_en:
+                    if num in en:
+                        result[num] = EpisodeInfo(
+                            name=en[num].name or result[num].name,
+                            overview=result[num].overview or en[num].overview,
+                            air_date=result[num].air_date,
+                            still=result[num].still or en[num].still,
+                        )
+
+        cached.write_text(json.dumps({str(k): v.__dict__ for k, v in result.items()}))
         return result

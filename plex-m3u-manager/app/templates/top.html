@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui %}
+{% block content %}
+<style>
+  .top-tabs { display: flex; gap: .5rem; margin-bottom: 1.2rem; }
+  .top-tabs a { padding: .45rem 1rem; border-radius: 10px; border: 1px solid var(--line);
+                color: var(--muted); font-weight: 600; font-size: .9rem; }
+  .top-tabs a.active { background: var(--accent); color: #1a1300; border-color: var(--accent); }
+
+  .top-filters { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-bottom: 1rem; }
+  .top-filters select { background: var(--bg2); border: 1px solid var(--line); color: var(--txt);
+          padding: .45rem .6rem; border-radius: 9px; }
+
+  .ranking { display: flex; flex-direction: column; gap: .5rem; }
+  .rank-row { display: grid; grid-template-columns: 2.5rem 70px 1fr auto; gap: 1rem; align-items: center;
+              background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+              padding: .6rem .9rem; transition: border-color .12s; }
+  .rank-row:hover { border-color: var(--accent); }
+  .rank-num { font-size: 1.3rem; font-weight: 800; color: var(--muted); text-align: center; }
+  .rank-num.top3 { color: var(--accent); }
+  .rank-thumb { width: 70px; height: 105px; border-radius: 8px; object-fit: cover;
+                background: var(--bg2); display: block; flex-shrink: 0; }
+  .rank-thumb.noimg { background: var(--bg2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' fill='%2397a2b6' viewBox='0 0 24 24'%3E%3Cpath d='M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zm-8.5 3.5a2 2 0 110 4 2 2 0 010-4zM19 17H5l4.5-6 3 4 2-2.5L19 17z'/%3E%3C/svg%3E") center/40px no-repeat; }
+  .rank-info { display: flex; flex-direction: column; gap: .25rem; min-width: 0; }
+  .rank-title { font-weight: 700; font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rank-meta { color: var(--muted); font-size: .8rem; display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+  .rank-tag { background: var(--bg2); border: 1px solid var(--line); border-radius: 6px;
+              padding: .1rem .4rem; font-size: .72rem; color: var(--muted); }
+  .rank-rating { display: flex; flex-direction: column; align-items: flex-end; gap: .3rem; white-space: nowrap; flex-shrink: 0; }
+  .stars { color: var(--accent); font-size: 1rem; letter-spacing: -1px; }
+  .rating-val { font-weight: 800; font-size: 1.1rem; }
+  .rating-votes { color: var(--muted); font-size: .72rem; }
+  .no-rating { color: var(--muted); font-size: .8rem; font-style: italic; }
+
+  .divider { display: flex; align-items: center; gap: .7rem; color: var(--muted); font-size: .8rem; margin: 1rem 0 .5rem; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+  @media (max-width: 560px) {
+    .rank-row { grid-template-columns: 2rem 50px 1fr; }
+    .rank-row .rank-rating { display: none; }
+    .rank-thumb { width: 50px; height: 75px; }
+  }
+</style>
+
+<h1>Top {{ 'Séries' if type=='series' else 'Filmes' }}</h1>
+
+<div class="top-tabs">
+  <a href="top?type=series" class="{{ 'active' if type=='series' }}">Séries</a>
+  <a href="top?type=movie" class="{{ 'active' if type=='movie' }}">Filmes</a>
+</div>
+
+<form class="top-filters" method="get" action="top">
+  <input type="hidden" name="type" value="{{ type }}">
+  <select name="group" onchange="this.form.submit()">
+    <option value="">Todas as origens</option>
+    {% for c in categories %}
+      <option value="{{ c.name }}" {{ 'selected' if c.name==group }}>{{ c.name }}</option>
+    {% endfor %}
+  </select>
+  {% if not tmdb_enabled %}
+    <span class="chip">TMDB não configurado — sem classificações</span>
+  {% endif %}
+</form>
+
+{% if not rows %}
+  <p class="muted">Sem resultados. Já importaste a lista?</p>
+{% else %}
+<p class="muted">{{ rated_count }} com classificação TMDB · {{ rows|length - rated_count }} sem dados</p>
+
+<div class="ranking">
+{% set ns = namespace(rank=0, showed_divider=false) %}
+{% for row in rows %}
+  {% set it = row.item %}
+  {% set rv = row.review %}
+  {% set name = it.series_title if type=='series' else it.title %}
+  {% set href = ('series/' ~ (name|urlencode)) if type=='series' else ('movie/' ~ it.id) %}
+
+  {% if not rv and not ns.showed_divider %}
+    {% if ns.rank > 0 %}
+    <div class="divider">Sem dados TMDB</div>
+    {% endif %}
+    {% set ns.showed_divider = true %}
+  {% endif %}
+
+  {% if rv %}{% set ns.rank = ns.rank + 1 %}{% endif %}
+
+  <a class="rank-row" href="{{ href }}">
+    <div class="rank-num {{ 'top3' if ns.rank <= 3 and rv }}">
+      {% if rv %}{{ ns.rank }}{% else %}—{% endif %}
+    </div>
+
+    {% if it.logo %}
+      <img class="rank-thumb" loading="lazy"
+           src="img?u={{ it.logo|urlencode }}" alt="{{ name }}"
+           onerror="this.classList.add('noimg'); this.removeAttribute('src')">
+    {% else %}
+      <div class="rank-thumb noimg"></div>
+    {% endif %}
+
+    <div class="rank-info">
+      <div class="rank-title">{{ name }}</div>
+      <div class="rank-meta">
+        {% if it.year %}<span>{{ it.year }}</span>{% endif %}
+        {% if type=='series' %}
+          <span>{{ it.seasons }} temp. · {{ it.episodes }} ep.</span>
+        {% endif %}
+        {% if it.group_title %}<span class="rank-tag">{{ it.group_title }}</span>{% endif %}
+        {% if rv and rv.original_title and rv.original_title != name %}
+          <span class="muted" style="font-style:italic">{{ rv.original_title }}</span>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="rank-rating">
+      {% if rv and rv.rating %}
+        {% set r = rv.rating %}
+        {% set full = (r / 2) | int %}
+        {% set half = 1 if (r / 2 - full) >= 0.4 else 0 %}
+        <div class="stars">
+          {% for i in range(full) %}★{% endfor %}
+          {% if half %}½{% endif %}
+          {% for i in range(5 - full - half) %}☆{% endfor %}
+        </div>
+        <div class="rating-val">{{ r }} <span style="color:var(--muted);font-size:.8rem;font-weight:400">/ 10</span></div>
+        {% if rv.votes %}<div class="rating-votes">{{ "{:,}".format(rv.votes).replace(",", " ") }} votos</div>{% endif %}
+        {% if rv.popularity %}<div class="rating-votes">pop. {{ rv.popularity | int }}</div>{% endif %}
+      {% else %}
+        <div class="no-rating">sem dados</div>
+      {% endif %}
+    </div>
+  </a>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}

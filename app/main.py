@@ -155,6 +155,48 @@ def browse(request: Request, type: str = "movie", q: str = "", group: str = "", 
     )
 
 
+@app.get("/top", response_class=HTMLResponse)
+def top(request: Request, type: str = "series", group: str = ""):
+    kind = "series" if type != "movie" else "movie"
+    group_filter = group or None
+
+    if kind == "series":
+        items = CATALOG.list_series(q="", group=group_filter, sort="title", limit=5000, offset=0)
+    else:
+        items = CATALOG.list_movies(q="", group=group_filter, sort="title", limit=5000, offset=0)
+
+    rated: list[dict] = []
+    unrated: list[dict] = []
+    for it in items:
+        title = it.series_title if kind == "series" else it.title
+        year = it.year
+        review = TMDB.lookup_cached(title, year, kind) if TMDB else None
+        row = {"item": it, "review": review}
+        if review and (review.popularity or review.rating):
+            rated.append(row)
+        else:
+            unrated.append(row)
+
+    rated.sort(key=lambda r: (
+        -(r["review"].popularity or 0),
+        -(r["review"].rating or 0),
+        (r["item"].series_title if kind == "series" else r["item"].title).lower(),
+    ))
+    unrated.sort(key=lambda r: (r["item"].series_title if kind == "series" else r["item"].title).lower())
+
+    return _render(
+        request, "top.html",
+        nav="top",
+        type=kind,
+        group=group,
+        rows=rated + unrated,
+        rated_count=len(rated),
+        categories=CATALOG.categories(kind),
+        tmdb_enabled=bool(TMDB),
+        refresh=0,
+    )
+
+
 @app.get("/categories", response_class=HTMLResponse)
 def categories(request: Request, type: str = "movie"):
     kind = type if type in ("movie", "series") else "movie"

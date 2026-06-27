@@ -35,6 +35,7 @@ class Review:
     poster: str | None
     series_id: int | None = None
     original_title: str | None = None
+    popularity: float | None = None
 
     def search_aliases(self) -> list[str]:
         return [alias for alias in (self.title, self.original_title) if alias]
@@ -120,9 +121,29 @@ class Tmdb:
             poster=(_IMG + top["poster_path"]) if top.get("poster_path") else None,
             series_id=top.get("id") if kind == "series" else None,
             original_title=top.get("original_title") or top.get("original_name"),
+            popularity=round(top["popularity"], 2) if top.get("popularity") else None,
         )
         cached.write_text(json.dumps(review.__dict__))
         return review
+
+    def lookup_cached(self, title: str, year: int | None, kind: str) -> Review | None:
+        """Return the cached Review without any HTTP requests. Returns None if not cached."""
+        if not self.api_key or not title:
+            return None
+        search_title = _YEAR_IN_TITLE.sub(" ", title).strip("'\"` \t")
+        if not search_title:
+            return None
+        cache_key = f"{kind}|{search_title}|{year}|{self.language}"
+        cached = self._cache_path(cache_key)
+        if not cached.exists():
+            return None
+        data = json.loads(cached.read_text())
+        if data is None:
+            return None
+        if "original_title" not in data or (kind == "series" and not data.get("series_id")):
+            return None
+        _fields = Review.__dataclass_fields__
+        return Review(**{k: v for k, v in data.items() if k in _fields})
 
     def _fetch_season_raw(self, series_id: int, season: int, language: str) -> dict[int, EpisodeInfo]:
         headers, auth_params = self._auth()

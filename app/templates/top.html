@@ -65,7 +65,7 @@
 {% if not rows %}
   <p class="muted">Sem resultados. Já importaste a lista?</p>
 {% else %}
-<p class="muted">{{ rated_count }} com classificação TMDB · {{ rows|length - rated_count }} sem dados</p>
+<p class="muted">{{ rated_count }} no ranking (≥50 votos) · {{ rows|length - rated_count }} sem dados suficientes</p>
 
 <div class="ranking">
 {% set ns = namespace(rank=0, showed_divider=false) %}
@@ -74,19 +74,20 @@
   {% set rv = row.review %}
   {% set name = it.series_title if type=='series' else it.title %}
   {% set href = ('series/' ~ (name|urlencode)) if type=='series' else ('movie/' ~ it.id) %}
+  {% set is_ranked = row.score > 0 %}
 
-  {% if not rv and not ns.showed_divider %}
+  {% if not is_ranked and not ns.showed_divider %}
     {% if ns.rank > 0 %}
-    <div class="divider">Sem dados TMDB</div>
+    <div class="divider">Poucos votos ou sem dados TMDB</div>
     {% endif %}
     {% set ns.showed_divider = true %}
   {% endif %}
 
-  {% if rv %}{% set ns.rank = ns.rank + 1 %}{% endif %}
+  {% if is_ranked %}{% set ns.rank = ns.rank + 1 %}{% endif %}
 
   <a class="rank-row" href="{{ href }}">
-    <div class="rank-num {{ 'top3' if ns.rank <= 3 and rv }}">
-      {% if rv %}{{ ns.rank }}{% else %}—{% endif %}
+    <div class="rank-num {{ 'top3' if ns.rank <= 3 and is_ranked }}">
+      {% if is_ranked %}{{ ns.rank }}{% else %}—{% endif %}
     </div>
 
     {% if it.logo %}
@@ -123,9 +124,9 @@
         </div>
         <div class="rating-val">{{ r }} <span style="color:var(--muted);font-size:.8rem;font-weight:400">/ 10</span></div>
         {% if rv.votes %}<div class="rating-votes">{{ "{:,}".format(rv.votes).replace(",", " ") }} votos</div>{% endif %}
-        {% if rv.popularity %}<div class="rating-votes">pop. {{ rv.popularity | int }}</div>{% endif %}
+        {% if row.score %}<div class="rating-votes" title="Nota ponderada (Bayesiana)">WR {{ "%.2f"|format(row.score) }}</div>{% endif %}
       {% else %}
-        <div class="no-rating">sem dados</div>
+        <div class="no-rating">{% if rv and rv.rating %}poucos votos{% else %}sem dados{% endif %}</div>
       {% endif %}
     </div>
   </a>

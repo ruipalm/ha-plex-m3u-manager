@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from math import ceil
 from pathlib import Path
 from urllib.parse import unquote, urlencode
@@ -155,6 +156,19 @@ def browse(request: Request, type: str = "movie", q: str = "", group: str = "", 
     )
 
 
+_EPISODE_CODE_RE = re.compile(r"^S\d{1,2}E\d{1,3}", re.IGNORECASE)
+_TOP_MIN_VOTES = 50     # below this → unrated bucket
+_TOP_MEAN_RATING = 7.0  # Bayesian prior (TMDB global average)
+
+
+def _bayesian_score(review) -> float:
+    """IMDb-style weighted rating: WR = (v/(v+m))*R + (m/(v+m))*C"""
+    v = review.votes or 0
+    r = review.rating or 0.0
+    m = _TOP_MIN_VOTES
+    return (v / (v + m)) * r + (m / (v + m)) * _TOP_MEAN_RATING
+
+
 @app.get("/top", response_class=HTMLResponse)
 def top(request: Request, type: str = "series", group: str = ""):
     kind = "series" if type != "movie" else "movie"
@@ -169,18 +183,18 @@ def top(request: Request, type: str = "series", group: str = ""):
     unrated: list[dict] = []
     for it in items:
         title = it.series_title if kind == "series" else it.title
+        # Skip entries whose title is just an episode code (misclassified series episodes)
+        if _EPISODE_CODE_RE.match(title or ""):
+            continue
         review = TMDB.lookup_cached(title, it.year, kind) if TMDB else None
-        row = {"item": it, "review": review}
-        if review and (review.popularity or review.rating):
+        row = {"item": it, "review": review, "score": 0.0}
+        if review and review.rating and (review.votes or 0) >= _TOP_MIN_VOTES:
+            row["score"] = _bayesian_score(review)
             rated.append(row)
         else:
             unrated.append(row)
 
-    rated.sort(key=lambda r: (
-        -(r["review"].popularity or 0),
-        -(r["review"].rating or 0),
-        (r["item"].series_title if kind == "series" else r["item"].title).lower(),
-    ))
+    rated.sort(key=lambda r: (-r["score"], (r["item"].series_title if kind == "series" else r["item"].title).lower()))
     unrated.sort(key=lambda r: (r["item"].series_title if kind == "series" else r["item"].title).lower())
 
     return _render(

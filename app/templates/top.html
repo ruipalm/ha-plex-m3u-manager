@@ -35,6 +35,10 @@
   .divider { display: flex; align-items: center; gap: .7rem; color: var(--muted); font-size: .8rem; margin: 1rem 0 .5rem; }
   .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 
+  .fetch-banner { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap;
+                  background: var(--bg2); border: 1px solid var(--accent); border-radius: 10px;
+                  padding: .6rem 1rem; margin-bottom: 1rem; font-size: .88rem; }
+
   @media (max-width: 560px) {
     .rank-row { grid-template-columns: 2rem 50px 1fr; }
     .rank-row .rank-rating { display: none; }
@@ -61,6 +65,19 @@
     <span class="chip">TMDB não configurado — sem classificações</span>
   {% endif %}
 </form>
+
+{% if fetch_running %}
+<div class="fetch-banner">
+  <span>⏳ A consultar TMDB…</span>
+  {% if fetch_total %}
+    <div class="progress" style="flex:1;max-width:220px">
+      <span style="width:{{ ((fetch_done / fetch_total) * 100)|int }}%"></span>
+    </div>
+    <span class="muted">{{ fetch_done }} / {{ fetch_total }}</span>
+  {% endif %}
+  <span class="chip">A página actualiza automaticamente</span>
+</div>
+{% endif %}
 
 {% if not rows %}
   <p class="muted">Sem resultados. Já importaste a lista?</p>

@@ -37,6 +37,7 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 _STATUS_LABEL = {"queued": "Em fila", "running": "A descarregar", "completed": "Concluído", "failed": "Falhou", "cancelled": "Cancelado", "skipped": "Já existe"}
 _ALIAS_REFRESH = {"running": False, "checked": 0, "updated": 0, "misses": 0, "error": ""}
+_TOP_FETCH: dict[str, object] = {"running": False, "kind": "", "done": 0, "total": 0, "error": ""}
 
 
 def _refresh_tmdb_aliases(catalog: Catalog, tmdb: Tmdb | None, limit: int | None = None) -> dict[str, int]:
@@ -169,8 +170,34 @@ def _bayesian_score(review) -> float:
     return (v / (v + m)) * r + (m / (v + m)) * _TOP_MEAN_RATING
 
 
+def _run_top_fetch(kind: str) -> None:
+    """Background task: fetch TMDB data for all uncached items of the given kind."""
+    if TMDB is None:
+        return
+    targets = CATALOG.tmdb_alias_targets()
+    targets = [t for t in targets if t["kind"] == kind]
+    _TOP_FETCH.update({"running": True, "kind": kind, "done": 0, "total": len(targets), "error": ""})
+    try:
+        for t in targets:
+            title = str(t["title"])
+            if _EPISODE_CODE_RE.match(title):
+                _TOP_FETCH["done"] = int(_TOP_FETCH["done"]) + 1  # type: ignore[assignment]
+                continue
+            year = t["year"] if isinstance(t["year"], int) else None
+            # lookup() uses disk cache when available → only makes HTTP for uncached items
+            try:
+                TMDB.lookup(title, year, kind)
+            except Exception:
+                pass
+            _TOP_FETCH["done"] = int(_TOP_FETCH["done"]) + 1  # type: ignore[assignment]
+    except Exception as exc:
+        _TOP_FETCH["error"] = str(exc)
+    finally:
+        _TOP_FETCH["running"] = False
+
+
 @app.get("/top", response_class=HTMLResponse)
-def top(request: Request, type: str = "series", group: str = ""):
+def top(request: Request, background_tasks: BackgroundTasks, type: str = "series", group: str = ""):
     kind = "series" if type != "movie" else "movie"
     group_filter = group or None
 
@@ -197,6 +224,16 @@ def top(request: Request, type: str = "series", group: str = ""):
     rated.sort(key=lambda r: (-r["score"], (r["item"].series_title if kind == "series" else r["item"].title).lower()))
     unrated.sort(key=lambda r: (r["item"].series_title if kind == "series" else r["item"].title).lower())
 
+    # Auto-fetch TMDB data in background when most items are unrated
+    fetch_running = bool(_TOP_FETCH.get("running")) and _TOP_FETCH.get("kind") == kind
+    total_items = len(rated) + len(unrated)
+    if TMDB and not fetch_running and len(rated) < total_items * 0.5:
+        background_tasks.add_task(_run_top_fetch, kind)
+        fetch_running = True
+
+    fetch_done = int(_TOP_FETCH.get("done", 0))
+    fetch_total = int(_TOP_FETCH.get("total", 0))
+
     return _render(
         request, "top.html",
         nav="top",
@@ -206,7 +243,10 @@ def top(request: Request, type: str = "series", group: str = ""):
         rated_count=len(rated),
         categories=CATALOG.categories(kind),
         tmdb_enabled=bool(TMDB),
-        refresh=0,
+        fetch_running=fetch_running,
+        fetch_done=fetch_done,
+        fetch_total=fetch_total,
+        refresh=4 if fetch_running else 0,
     )
 
 
